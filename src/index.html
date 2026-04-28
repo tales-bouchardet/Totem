@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Totem</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <div id="modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="top-bar"><span>Criar nova aba</span></div>
+        
+        <input type="text" id="new-aba-name" placeholder="Digite o nome...">
+        <div class="modal-actions">
+          <button id="modal-cancel">Cancelar</button>
+          <button id="modal-confirm">OK</button>
+        </div>
+      </div>
+    </div>
+    <div id="modal-edit" class="modal hidden">
+      <div class="modal-content">
+        <div class="top-bar"><span>Sair do modo de edição</span></div>
+        
+        <p>Sair do modo de edição irá apagar todas as alterações, deseja prosseguir?</p>
+        <div class="modal-actions">
+          <button id="modal-cancelar">Cancelar</button>
+          <button id="modal-ok">OK</button>
+        </div>
+      </div>
+    </div>
+    <div id="menu-bar">
+      <button id="edit-btn">Editar</button>
+      <button id="new-btn" style="display: none;">Nova Aba</button>
+      <button id="tv-host" name="TeamViewer Host" value="a"></button>
+    </div>
+    <main class="container">
+      <div id="aba-wrapper"></div>
+      <div id="aba-content"></div>
+      <button id="save-btn" style="display: none;">Salvar</button>
+    </main>
+    
+  </body>
+</html>

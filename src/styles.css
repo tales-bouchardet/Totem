@@ -1,0 +1,325 @@
+:root {
+  /* Paleta principal */
+  --color-bg-dark: #202020;
+  --color-bg-darker: #1a1a1a;
+  --color-bg-gray: #2d2d2d;
+  --color-bg-gray-light: #333333;
+  --color-white: #ffffff;
+  --color-gray-light: #9a9a9a;
+  --color-gray-lighter: #b0b0b0;
+  --color-gray-lightest: #d0d0d0;
+
+  /* Azul padronizado */
+  --color-blue: #2a45c2;
+  --color-blue-dark: #1f59d2;
+  --color-blue-light: #3d21a7;
+  --color-blue-gradient-start: #1f59d2;
+  --color-blue-gradient-end: #480e98;
+}
+
+/* ==================== BASE ==================== */
+body, html {
+    background: var(--color-bg-dark);
+    position: absolute;
+    margin: 0;
+    padding: 0;
+    width: -webkit-fill-available;
+    height: -webkit-fill-available;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 13.5px;
+    justify-items: center;
+    cursor: default;
+    user-select: none;
+    color: var(--color-white);
+    overflow-x: hidden;
+}
+
+/* ==================== MENU ==================== */
+#menu-bar {
+    position: fixed;
+    background: var(--color-bg-darker);
+    width: -webkit-fill-available;
+    border-bottom: 1px solid var(--color-bg-gray-light);
+    gap: 0;
+    display: flex;
+    z-index: 500;
+}
+
+#menu-bar button {
+    background: none;
+    color: var(--color-white);
+    border: 0;
+    border-right: 1px solid var(--color-bg-gray-light);
+    margin: 0;
+    padding: 5px 10px;
+}
+
+#menu-bar button:hover {
+    background: var(--color-bg-gray);
+}
+
+#tv-host {
+    position: absolute;
+    right: 0;
+    border: 1px solid var(--color-blue) !important;
+    background: var(--color-blue-light) !important;
+    padding: 4px 10px !important;
+}
+
+/* ==================== CONTAINER ==================== */
+.container {
+    display: flex;
+    align-items: start;
+    width: 72%;
+    height: -webkit-fill-available;
+    flex-direction: column;
+    border-left: 1px solid var(--color-bg-gray-light);
+    border-right: 1px solid var(--color-bg-gray-light);
+    min-width: 498px;
+    max-width: 1200px;
+    position: fixed;
+    overflow: auto;
+    margin-top: 57px;
+}
+
+/* ==================== ABA WRAPPER ==================== */
+#aba-wrapper {
+    min-width: inherit;
+    white-space: nowrap;
+    position: fixed;
+    background: var(--color-bg-darker);
+    z-index: 1000;
+    margin-left: -1px;
+    width: inherit;
+    overflow: auto;
+    max-width: inherit;
+    margin-top: -31px;
+    border-left: 1px solid var(--color-bg-gray-light);
+    border-right: 1px solid var(--color-bg-gray-light);
+}
+
+#aba-wrapper button {
+    background: none;
+    color: #797979;
+    font-size: medium;
+    border: none;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+}
+
+#aba-wrapper button:hover {
+    color: var(--color-white);
+}
+
+/* Scrollbar */
+#aba-wrapper::-webkit-scrollbar {
+  height: 3px;
+  width: 3px;
+  background: var(--color-bg-gray);
+}
+
+#aba-wrapper::-webkit-scrollbar-thumb {
+    background-color: #ffffff26;
+    height: -webkit-fill-available;
+    width: -webkit-fill-available;
+}
+
+#aba-content { width: -webkit-fill-available; }
+
+/* ==================== ABA ==================== */
+.aba {
+    padding: 0rem 2rem;
+    margin-top: 10px;
+}
+
+.active {
+    color: var(--color-white) !important;
+    border-top: 2px solid var(--color-blue) !important;
+    background: var(--color-bg-dark) !important;
+}
+
+.titulo {
+    background: linear-gradient(45deg, var(--color-blue-gradient-start) 0%, var(--color-blue-gradient-end) 100%);
+    justify-self: baseline;
+    font-weight: bold;
+    padding: 0.1rem .4rem;
+    border-radius: 5px;
+    border: 1px solid #ffffff17;
+    margin-top: 5px;
+    margin-bottom: -7px;
+    margin-left: 10px;
+    z-index: 2;
+    line-break: anywhere;
+    user-select: text !important;
+}
+
+.texto {
+    padding: 0.8rem;
+    border: 2px solid #ffffff08;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    background: var(--color-bg-gray);
+    line-height: 19px;
+    color: rgb(210, 210, 210);
+    line-break: anywhere;
+    user-select: text !important;
+}
+
+.titulo, .texto {
+  white-space: pre-wrap;     /* mostra \n como quebra */
+  overflow-wrap: break-word; /* quebra palavras muito longas */
+}
+
+.texto:focus-visible {
+    outline: none;
+}
+
+.copied {
+    border: 2px solid var(--color-blue) !important;
+    transition: .5s ease-in-out;
+}
+
+.modal-content p {
+    margin: 0;
+    padding: 0 1rem;
+}
+
+/* ==================== CONTEXT MENU ==================== */
+#ctx-menu, #btn-ctx-menu {
+    background: var(--color-bg-gray);
+    border: 1px solid #ffffff29;
+    font-size: larger;
+    border-radius: 5px;
+    z-index: 9999;
+}
+
+#ctx-menu div, #btn-ctx-menu div {
+    padding: .4rem .8rem;
+}
+
+#ctx-menu div:hover, #btn-ctx-menu div:hover {
+    background: #ffffff0f;
+}
+
+[data-action="add-texto"], [data-action="add-texto-after"] {
+    border-bottom: solid 1px #ffffff30;
+    padding-bottom: .5rem !important;
+}
+
+/* ==================== SAVE BUTTON ==================== */
+#save-btn {
+    width: max-content;
+    justify-self: anchor-center;
+    padding: 8px 12px;
+    align-self: end;
+    margin: 10px;
+    background: var(--color-blue-light);
+    color: var(--color-white);
+    font-family: inherit;
+    font-weight: bold;
+    border: 1px solid #ffffff57;
+    border-radius: 5px;
+    align-self: anchor-center;
+}
+
+/* ==================== MODAL ==================== */
+.modal {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+
+.hidden { display: none; }
+
+.modal-content {
+    background: var(--color-bg-dark);
+    border-radius: 5px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    display: grid;
+    width: min-content;
+}
+
+.top-bar {
+    display: block;
+    width: 350px;
+    background: var(--color-blue-light);
+    padding: 0.3rem 0.8rem;
+    font-weight: bold;
+    margin-bottom: 2rem;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+#new-aba-name {
+    background: var(--color-bg-gray-light);
+    border: 0;
+    border-radius: 5px;
+    padding: 10px 15px;
+    width: 80%;
+    justify-self: anchor-center;
+    color: var(--color-white);
+}
+
+.modal-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 15px;
+    padding: 12px;
+}
+
+.modal-actions button {
+    background: var(--color-bg-gray-light);
+    color: var(--color-white);
+    font-family: inherit;
+    border: 0;
+    padding: 8px 12px;
+    border-radius: 5px;
+}
+
+button:hover {
+    filter: brightness(1.5);
+}
+
+#modal-confirm {
+    background: var(--color-blue-dark);
+    border: 1px solid #ffffff61;
+}
+
+*:focus-visible {
+    outline: 2px solid #ffffff2b;
+}
+
+/* ==================== SCROLLBAR ==================== */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-gray-light) var(--color-bg-darker);
+}
+
+/* Edge/Chromium */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--color-bg-darker);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-gray-light);
+  border-radius: 8px;
+  border: 2px solid var(--color-bg-darker);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-gray-lighter);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-gray-lightest);
+}
