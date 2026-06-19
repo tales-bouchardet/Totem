@@ -2,7 +2,8 @@
 
 Bloco de notas pessoal para Windows com suporte a Markdown, blocos de código com syntax highlighting e imagens. Organizado em abas, salvo automaticamente e protegido por criptografia.
 
-<img width="858" height="692" alt="image" src="https://github.com/user-attachments/assets/223ff074-99b0-4fb2-9047-4aa6128a4ceb" />
+<img width="852" height="737" alt="image" src="https://github.com/user-attachments/assets/43bebdcb-0ab8-4be9-8b02-f1785a15395a" />
+
 
 ## Features
 
@@ -18,7 +19,7 @@ Bloco de notas pessoal para Windows com suporte a Markdown, blocos de código co
 
 ## Build
 
-Requer [.NET 10](https://dotnet.microsoft.com/download) e o [Windows App SDK](https://learn.microsoft.com/windows/apps/windows-app-sdk/).
+Requer .NET 10 e o Windows App SDK.
 
 ```
 otnet publish -c Release -r win-x64 -o publish
