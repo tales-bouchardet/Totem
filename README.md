@@ -22,7 +22,7 @@ Requer [.NET 10](https://dotnet.microsoft.com/download) e o [Windows App SDK](ht
 
 ```
 otnet publish -c Release -r win-x64 -o publish
-vpk pack --packId aec.totem --packVersion 1.0.0 --packDir publish --outputDir Totem_VPK --icon icon.ico --mainExe aec.totem.exe
+vpk pack --packId totem --packVersion 1.0.0 --packDir publish --outputDir Totem_VPK --icon icon.ico --mainExe totem.exe
 ```
 
 O executável publicado fica em `publish\`.
