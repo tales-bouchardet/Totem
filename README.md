@@ -2,7 +2,7 @@
 
 Bloco de notas pessoal para Windows com suporte a Markdown, blocos de código com syntax highlighting e imagens. Organizado em abas, salvo automaticamente e protegido por criptografia.
 
-![screenshot](https://github.com/user-attachments/assets/ebfc9e2d-8692-4784-b602-0be811eca46d)
+<img width="858" height="692" alt="image" src="https://github.com/user-attachments/assets/223ff074-99b0-4fb2-9047-4aa6128a4ceb" />
 
 ## Features
 
