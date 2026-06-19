@@ -22,7 +22,7 @@ Bloco de notas pessoal para Windows com suporte a Markdown, blocos de código co
 Requer .NET 10 e o Windows App SDK.
 
 ```
-otnet publish -c Release -r win-x64 -o publish
+dotnet publish -c Release -r win-x64 -o publish
 vpk pack --packId totem --packVersion 1.0.0 --packDir publish --outputDir Totem_VPK --icon icon.ico --mainExe totem.exe
 ```
 
