@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <AssemblyName>totem</AssemblyName>
+    <RootNamespace>totem</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>pt-BR;en-US</SatelliteResourceLanguages>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Propriedades pesadas só durante dotnet publish (RestoreIdentifier, single-file). -->
+  <PropertyGroup Condition="'$(Publish)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Labs.WinUI.Controls.MarkdownTextBlock" Version="0.1.251217-build.2433" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1839" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.1.3" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
+  </ItemGroup>
+
+  <!-- XBF (compiled XAML) and PRI (resources) cannot be loaded from inside the
+       single-file bundle by the WinUI 3 runtime; copy them alongside the exe. -->
+  <Target Name="CopyNativeWinUIFilesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_XbfPriFiles Include="$(OutDir)*.xbf;$(OutDir)*.pri" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_XbfPriFiles)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="RemoveExtraLanguageFolders" AfterTargets="Publish">
+    <PropertyGroup>
+      <_AbsPublishDir>$([System.IO.Path]::GetFullPath('$(PublishDir)'))</_AbsPublishDir>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -Command &quot;Get-ChildItem '$(_AbsPublishDir)' -Directory | Where-Object { $_.Name -notin @('pt-BR','en-us','Microsoft.UI.Xaml') } | Remove-Item -Recurse -Force&quot;" />
+  </Target>
+</Project>
