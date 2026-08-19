@@ -19,11 +19,10 @@ Bloco de notas pessoal para Windows com suporte a Markdown, blocos de código co
 
 ## Build
 
-Requer .NET 10 e o Windows App SDK.
+WPF sobre .NET Framework 4.6.2 (via [WPF-UI](https://github.com/lepoco/wpfui)), sem pré-requisitos além do próprio Windows.
 
 ```
-dotnet publish -c Release -r win-x64 -o publish
-vpk pack --packId totem --packVersion 1.0.0 --packDir publish --outputDir Totem_VPK --icon icon.ico --mainExe totem.exe
+dotnet publish -c Release -o publish
 ```
 
-O executável publicado fica em `publish\`.
+O executável publicado fica em `publish\totem.exe`.

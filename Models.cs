@@ -1,16 +1,16 @@
 namespace totem;
 
-// ── Modelo de dados serializável (vira JSON antes de criptografar no .ttm) ──────
+// ── Serializable data model (becomes JSON before being encrypted in the .ttm) ──
 
 public sealed class TotemDocument
 {
-    // Versão do formato. Incrementar quando a estrutura mudar de forma incompatível;
-    // a carga recusa documentos com versão maior que esta (criados por app mais novo).
+    // Format version. Increment when the structure changes incompatibly;
+    // loading rejects documents with a version higher than this one (created by a newer app).
     public const int CurrentVersion = 1;
 
     public int Version { get; set; } = CurrentVersion;
     public List<TotemTab> Tabs { get; set; } = new();
-    public int SelectedTab { get; set; } // índice da aba ativa
+    public int SelectedTab { get; set; } // index of the active tab
 }
 
 public sealed class TotemTab
@@ -25,15 +25,27 @@ public sealed class TotemItem
     public string Content { get; set; } = "";
     public bool IsCode { get; set; }
     public string? Language { get; set; }
-    public bool IsPlainText { get; set; }
+    public bool IsPlainText { get; set; } = true;
     public bool IsSeparator { get; set; }
     public bool IsImage { get; set; }
-    public string? ImageData { get; set; } // Base64 da imagem
+    public string? ImageData { get; set; } // Base64 image data
 }
 
-// ── Linguagens disponíveis para o modo "bloco de código" ───────────────────────
+// ── Languages available for "code block" mode ───────────────────────────────
 
-public sealed record CodeLanguage(string Id, string Name, string Skeleton);
+public sealed class CodeLanguage
+{
+    public string Id { get; }
+    public string Name { get; }
+    public string Skeleton { get; }
+
+    public CodeLanguage(string id, string name, string skeleton)
+    {
+        Id = id;
+        Name = name;
+        Skeleton = skeleton;
+    }
+}
 
 public static class CodeLanguages
 {

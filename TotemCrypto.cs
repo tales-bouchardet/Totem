@@ -1,89 +1,144 @@
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Crypto.Engines;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace totem;
 
 /// <summary>
-/// Formato do arquivo .ttm (binário sigiloso):
+/// .ttm file format (opaque binary):
 ///   [4]  magic  "TTM1"
 ///   [16] salt   (PBKDF2)
 ///   [12] nonce  (AES-GCM)
-///   [16] tag    (autenticação AES-GCM)
+///   [16] tag    (AES-GCM authentication tag)
 ///   [..] ciphertext
 ///
-/// A senha informada na exportação é a própria chave: deriva-se uma chave
-/// AES-256 via PBKDF2/SHA-256. Como o GCM é autenticado, importar com a senha
-/// errada (ou com o arquivo adulterado) lança e a importação é recusada.
+/// The password given on export is the key material itself: an AES-256 key is
+/// derived from it via PBKDF2/SHA-256. Because GCM is authenticated, importing
+/// with the wrong password (or a tampered file) throws and the import is rejected.
+/// .NET Framework has no built-in AES-GCM or SHA-256 PBKDF2, so both come from
+/// BouncyCastle.
 /// </summary>
 public static class TotemCrypto
 {
-    private static readonly byte[] Magic = "TTM1"u8.ToArray();
+    private static readonly byte[] Magic = Encoding.ASCII.GetBytes("TTM1");
     private const int SaltSize = 16;
     private const int NonceSize = 12;
-    private const int TagSize = 16;
-    private const int KeySize = 32;
+    private const int TagSize = 16; // bytes
+    private const int KeySize = 32; // bytes (AES-256)
     private const int Iterations = 200_000;
 
     public static byte[] Encrypt(string plainText, string password)
     {
-        var salt = RandomNumberGenerator.GetBytes(SaltSize);
-        var nonce = RandomNumberGenerator.GetBytes(NonceSize);
-        var key = Rfc2898DeriveBytes.Pbkdf2(
-            password, salt, Iterations, HashAlgorithmName.SHA256, KeySize);
-
+        var salt = RandomBytes(SaltSize);
+        var nonce = RandomBytes(NonceSize);
+        var key = DeriveKey(password, salt);
         var plain = Encoding.UTF8.GetBytes(plainText);
         try
         {
-            var cipher = new byte[plain.Length];
+            var cipher = new GcmBlockCipher(new AesEngine());
+            cipher.Init(true, new AeadParameters(new KeyParameter(key), TagSize * 8, nonce));
+            var output = new byte[cipher.GetOutputSize(plain.Length)];
+            var len = cipher.ProcessBytes(plain, 0, plain.Length, output, 0);
+            cipher.DoFinal(output, len);
+
+            // BouncyCastle appends the tag to the end of the output; split it back out
+            // so the file layout matches AES-GCM's usual [ciphertext][tag] convention.
+            var cipherText = new byte[plain.Length];
             var tag = new byte[TagSize];
+            Array.Copy(output, 0, cipherText, 0, plain.Length);
+            Array.Copy(output, plain.Length, tag, 0, TagSize);
 
-            using (var aes = new AesGcm(key, TagSize))
-                aes.Encrypt(nonce, plain, cipher, tag);
-
-            using var ms = new MemoryStream(Magic.Length + SaltSize + NonceSize + TagSize + cipher.Length);
-            ms.Write(Magic);
-            ms.Write(salt);
-            ms.Write(nonce);
-            ms.Write(tag);
-            ms.Write(cipher);
+            using var ms = new MemoryStream(Magic.Length + SaltSize + NonceSize + TagSize + cipherText.Length);
+            ms.Write(Magic, 0, Magic.Length);
+            ms.Write(salt, 0, salt.Length);
+            ms.Write(nonce, 0, nonce.Length);
+            ms.Write(tag, 0, tag.Length);
+            ms.Write(cipherText, 0, cipherText.Length);
             return ms.ToArray();
         }
         finally
         {
-            // Não deixa a chave derivada nem o texto-puro perdurarem na memória.
-            CryptographicOperations.ZeroMemory(key);
-            CryptographicOperations.ZeroMemory(plain);
+            // Don't let the derived key or the plaintext linger in memory.
+            Array.Clear(key, 0, key.Length);
+            Array.Clear(plain, 0, plain.Length);
         }
     }
 
-    /// <summary>Lança <see cref="CryptographicException"/> se a senha estiver errada ou o arquivo for inválido.</summary>
+    /// <summary>Throws <see cref="CryptographicException"/> if the password is wrong or the file is invalid.</summary>
     public static string Decrypt(byte[] data, string password)
     {
         var minimum = Magic.Length + SaltSize + NonceSize + TagSize;
-        if (data.Length < minimum || !data.AsSpan(0, Magic.Length).SequenceEqual(Magic))
+        if (data.Length < minimum || !StartsWith(data, Magic))
             throw new CryptographicException("Arquivo .ttm inválido.");
 
         var offset = Magic.Length;
-        var salt = data.AsSpan(offset, SaltSize).ToArray(); offset += SaltSize;
-        var nonce = data.AsSpan(offset, NonceSize).ToArray(); offset += NonceSize;
-        var tag = data.AsSpan(offset, TagSize).ToArray(); offset += TagSize;
-        var cipher = data.AsSpan(offset).ToArray();
+        var salt = Slice(data, offset, SaltSize); offset += SaltSize;
+        var nonce = Slice(data, offset, NonceSize); offset += NonceSize;
+        var tag = Slice(data, offset, TagSize); offset += TagSize;
+        var cipherLen = data.Length - offset;
 
-        var key = Rfc2898DeriveBytes.Pbkdf2(
-            password, salt, Iterations, HashAlgorithmName.SHA256, KeySize);
+        // Re-append the tag so BouncyCastle sees the [ciphertext][tag] layout it expects.
+        var cipherAndTag = new byte[cipherLen + TagSize];
+        Array.Copy(data, offset, cipherAndTag, 0, cipherLen);
+        Array.Copy(tag, 0, cipherAndTag, cipherLen, TagSize);
 
-        var plain = new byte[cipher.Length];
+        var key = DeriveKey(password, salt);
         try
         {
-            using (var aes = new AesGcm(key, TagSize))
-                aes.Decrypt(nonce, cipher, tag, plain); // AuthenticationTagMismatch -> senha incorreta
-
-            return Encoding.UTF8.GetString(plain);
+            var cipher = new GcmBlockCipher(new AesEngine());
+            cipher.Init(false, new AeadParameters(new KeyParameter(key), TagSize * 8, nonce));
+            var output = new byte[cipher.GetOutputSize(cipherAndTag.Length)];
+            try
+            {
+                var len = cipher.ProcessBytes(cipherAndTag, 0, cipherAndTag.Length, output, 0);
+                len += cipher.DoFinal(output, len);
+                return Encoding.UTF8.GetString(output, 0, len);
+            }
+            catch (InvalidCipherTextException)
+            {
+                // wrong password or tampered file
+                throw new CryptographicException("Senha incorreta ou arquivo corrompido.");
+            }
         }
         finally
         {
-            CryptographicOperations.ZeroMemory(key);
-            CryptographicOperations.ZeroMemory(plain);
+            Array.Clear(key, 0, key.Length);
         }
+    }
+
+    private static byte[] DeriveKey(string password, byte[] salt)
+    {
+        var generator = new Pkcs5S2ParametersGenerator(new Sha256Digest());
+        generator.Init(Encoding.UTF8.GetBytes(password), salt, Iterations);
+        var key = (KeyParameter)generator.GenerateDerivedMacParameters(KeySize * 8);
+        return key.GetKey();
+    }
+
+    private static byte[] RandomBytes(int size)
+    {
+        var bytes = new byte[size];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        return bytes;
+    }
+
+    private static bool StartsWith(byte[] data, byte[] prefix)
+    {
+        for (var i = 0; i < prefix.Length; i++)
+            if (data[i] != prefix[i]) return false;
+        return true;
+    }
+
+    private static byte[] Slice(byte[] data, int start, int length)
+    {
+        var result = new byte[length];
+        Array.Copy(data, start, result, 0, length);
+        return result;
     }
 }

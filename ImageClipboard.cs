@@ -1,105 +1,71 @@
-using Windows.ApplicationModel.DataTransfer;
-using Windows.Storage;
-using Windows.Storage.Streams;
+using System.IO;
+using System.Windows;
+using System.Windows.Media.Imaging;
 
 namespace totem;
 
 /// <summary>
-/// Cópia de imagens para a área de transferência.
-///
-/// O histórico do Windows (Win+V) só registra bitmaps e ignora qualquer cópia que
-/// contenha arquivos (CF_HDROP) — não dá para ter imagem-no-histórico e colar-como-arquivo
-/// na mesma cópia. Por isso há duas operações:
-///  • <see cref="CopyImageAsync"/>  — só bitmap; entra no histórico (ação padrão).
-///  • <see cref="CopyAsFileAsync"/> — arquivo + bitmap; cola no Explorer, mas fora do histórico.
-///
-/// O bitmap é montado a partir de um PNG temporário (referência por arquivo é a forma
-/// confiável no WinUI 3; a partir de stream em memória falha de forma intermitente).
-/// <see cref="Clipboard.Flush"/> materializa o conteúdo na área de transferência do SO
-/// (necessário para o bitmap aparecer no histórico e sobreviver ao fechamento do app).
-///
-/// Ciclo de vida do temporário: quando o bitmap é materializado pelo Flush, o arquivo
-/// vira descartável e é apagado na hora. Quando há CF_HDROP (cópia como arquivo) ou o
-/// Flush falha, o arquivo precisa sobreviver enquanto estiver na área de transferência —
-/// mantemos um só por vez e apagamos o anterior na cópia seguinte. <see cref="PurgeLeftovers"/>
-/// limpa sobras de sessões passadas na inicialização.
+/// Copying images to the clipboard, using WPF's native <see cref="Clipboard"/>.
 /// </summary>
 public static class ImageClipboard
 {
-    private static readonly string Pasta =
+    private static readonly string TempFolder =
         Path.Combine(Path.GetTempPath(), "aec.totem", "clip");
 
-    // Arquivo ainda referenciado pela área de transferência (delay-render ou CF_HDROP).
-    private static string? _arquivoAtivo;
+    // File still referenced by a previous "copy as file" (kept alive until the next one).
+    private static string? _activeFile;
 
-    /// <summary>Remove temporários deixados por sessões anteriores. Chamar na inicialização.</summary>
+    /// <summary>Removes temp files left by previous sessions. Call on startup.</summary>
     public static void PurgeLeftovers()
     {
         try
         {
-            if (Directory.Exists(Pasta))
-                Directory.Delete(Pasta, recursive: true);
+            if (Directory.Exists(TempFolder))
+                Directory.Delete(TempFolder, recursive: true);
         }
         catch { /* best-effort */ }
     }
 
-    /// <summary>Copia como imagem (bitmap). Aparece no histórico (Win+V).</summary>
-    public static async Task CopyImageAsync(byte[] png)
-    {
-        var caminho = await WriteTempAsync(png);
-        var pkg = await BuildPackageAsync(caminho, includeFile: false);
-        Clipboard.SetContentWithOptions(pkg, new ClipboardContentOptions { IsAllowedInHistory = true });
+    /// <summary>Copies as an image (bitmap).</summary>
+    public static void CopyImage(byte[] imageBytes) => Clipboard.SetImage(Decode(imageBytes));
 
-        // Flush materializa o bitmap no SO; aí o temporário não é mais necessário.
-        var flushed = TryFlush();
-        SetActiveFile(flushed ? null : caminho); // se não materializou, o arquivo segue sendo a fonte
-        if (flushed) TryDelete(caminho);
+    /// <summary>Copies as a file (pastes into Explorer, e.g.).</summary>
+    public static void CopyAsFile(byte[] imageBytes)
+    {
+        var path = WriteTemp(imageBytes);
+        var files = new System.Collections.Specialized.StringCollection { path };
+        Clipboard.SetFileDropList(files);
+        SetActiveFile(path);
     }
 
-    /// <summary>Copia como arquivo (e também como imagem). Não entra no histórico.</summary>
-    public static async Task CopyAsFileAsync(byte[] png)
+    private static BitmapSource Decode(byte[] bytes)
     {
-        var caminho = await WriteTempAsync(png);
-        var pkg = await BuildPackageAsync(caminho, includeFile: true);
-        Clipboard.SetContent(pkg);
-        TryFlush();
-        SetActiveFile(caminho); // o CF_HDROP aponta para o arquivo: mantê-lo vivo
+        var bmp = new BitmapImage();
+        using var ms = new MemoryStream(bytes);
+        bmp.BeginInit();
+        bmp.CacheOption = BitmapCacheOption.OnLoad;
+        bmp.StreamSource = ms;
+        bmp.EndInit();
+        bmp.Freeze();
+        return bmp;
     }
 
-    private static async Task<string> WriteTempAsync(byte[] png)
+    private static string WriteTemp(byte[] bytes)
     {
-        Directory.CreateDirectory(Pasta);
-        var caminho = Path.Combine(Pasta, $"img_{Guid.NewGuid():N}.png");
-        await File.WriteAllBytesAsync(caminho, png);
-        return caminho;
+        Directory.CreateDirectory(TempFolder);
+        var path = Path.Combine(TempFolder, $"img_{Guid.NewGuid():N}.png");
+        File.WriteAllBytes(path, bytes);
+        return path;
     }
 
-    private static async Task<DataPackage> BuildPackageAsync(string path, bool includeFile)
+    private static void SetActiveFile(string path)
     {
-        var file = await StorageFile.GetFileFromPathAsync(path);
-        var pkg = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-        if (includeFile) pkg.SetStorageItems(new[] { file });
-        pkg.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
-        return pkg;
-    }
-
-    // Substitui o arquivo ativo e apaga o anterior (já saiu da área de transferência).
-    private static void SetActiveFile(string? caminho)
-    {
-        var anterior = _arquivoAtivo;
-        _arquivoAtivo = caminho;
-        if (anterior is not null && anterior != caminho) TryDelete(anterior);
-    }
-
-    private static bool TryFlush()
-    {
-        try { Clipboard.Flush(); return true; }
-        catch { return false; }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try { File.Delete(path); }
-        catch { /* em uso pelo SO; será limpo na próxima inicialização */ }
+        var previous = _activeFile;
+        _activeFile = path;
+        if (previous is not null && previous != path)
+        {
+            try { File.Delete(previous); }
+            catch { /* in use by the OS; will be cleaned up on next startup */ }
+        }
     }
 }

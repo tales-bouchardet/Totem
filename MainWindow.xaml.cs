@@ -1,315 +1,209 @@
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using System.Runtime.InteropServices;
+using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Windows.Security.Cryptography;
-using Windows.Security.Cryptography.DataProtection;
-using Windows.Storage.Pickers;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace totem;
 
-public sealed partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, uint attr, ref uint attrValue, uint attrSize);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
-
-    // Mínimo da janela acompanha o piso do input: largura mínima do input
-    // (ItemControl.MinInputWidth) + padding da lista (16*2) + folga p/ a borda.
+    // Window minimum follows the input floor: input's minimum width
+    // (ItemControl.MinInputWidth) + a bit of slack for the window chrome.
     private const double MinWindowChrome = 32 + 20;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
-    // Cache local auto-salvo, protegido por DPAPI (só este usuário do Windows lê).
+    // Local auto-saved cache, protected by DPAPI (only this Windows user can read it).
     private static readonly string CachePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "aec.totem", "cache.bin");
 
-    private readonly TabView _tabs;
-    private Border _tabStrip = null!;
     private DispatcherTimer? _saveDebounce;
     private bool _loaded;
-    private bool _isClosing;
+
+    private Point _tabDragStart;
+    private TabItem? _tabDragSource;
+
+    // Always the last entry in Tabs.Items: a "+" that looks/behaves like the old
+    // standalone button but flows in the same WrapPanel row as the real tabs.
+    private TabItem? _addTabItem;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        Activated += OnFirstActivated;
+        MinWidth = ItemControl.MinInputWidth + MinWindowChrome;
+        MinHeight = 320;
 
-        Title = "Totem";
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(titleBarArea);
-        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Standard;
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        VersionText.Text = $"versão {version?.ToString(3) ?? "1.0.0"}";
+        DotNetText.Text = ".NET Framework 4.6.2";
 
-        ApplyMinWindowSize();
+        App.DialogHost = RootContentDialogHost;
 
-        var versao = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        menuVersionItem.Text = $"versão {versao?.ToString(3) ?? "1.0.0"}";
-        menuDotNetItem.Text = RuntimeInformation.FrameworkDescription;
-
-        // Faixa atrás da régua de abas (só a altura da régua; o conteúdo abaixo
-        // mantém o fundo padrão do programa). As abas não selecionadas são
-        // transparentes e se fundem aqui; a selecionada fica com a cor do conteúdo.
-        // A cor da faixa/hover se adapta ao tema (claro/escuro).
-        _tabStrip = new Border
+        Closing += (_, _) =>
         {
-            Height = 40,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        contentRoot.Children.Add(_tabStrip);
-
-        _tabs = BuildTabView();
-        contentRoot.Children.Add(_tabs);
-
-        ApplyAllTheme();
-
-        AppWindow.Closing += async (_, args) =>
-        {
-            if (_isClosing) return;
-            args.Cancel = true;
-            _isClosing = true;
             _saveDebounce?.Stop();
-            if (_loaded) await SaveCacheAsync();
-            Application.Current.Exit();
+            if (_loaded) SaveCache();
         };
 
-        _ = InitializeAsync();
-    }
-
-    private async Task InitializeAsync()
-    {
-        var doc = await LoadCacheAsync();
+        var doc = LoadCache();
         if (doc is { Tabs.Count: > 0 })
             LoadDocument(doc);
         else
             AddTab(new TotemTab { Name = "Aba 1", Items = [new TotemItem { Label = "" }] });
 
+        _addTabItem = CreateAddTabItem();
+        Tabs.Items.Add(_addTabItem);
+
         _loaded = true;
-        _tabs.TabItemsChanged += (_, _) => ScheduleSave();  // adicionar/fechar/reordenar
-        _tabs.SelectionChanged += (_, _) => ScheduleSave(); // trocar de aba ativa
     }
 
-    private void ApplyMinWindowSize()
+    private TabItem CreateAddTabItem()
     {
-        if (AppWindow.Presenter is not OverlappedPresenter presenter) return;
-
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dpi = GetDpiForWindow(hwnd);
-        var scale = dpi > 0 ? dpi / 96.0 : 1.0;
-
-        presenter.PreferredMinimumWidth = (int)((ItemControl.MinInputWidth + MinWindowChrome) * scale);
-        presenter.PreferredMinimumHeight = (int)(320 * scale);
-    }
-
-    private void OnFirstActivated(object sender, WindowActivatedEventArgs e)
-    {
-        Activated -= OnFirstActivated;
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        uint round = 2; // DWMWCP_ROUND
-        DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref round, sizeof(uint));
-    }
-
-    // ── Abas (paginação) ─────────────────────────────────────────────────────
-
-    private TabView BuildTabView()
-    {
-        var tv = new TabView
+        var button = new Wpf.Ui.Controls.Button
         {
-            IsAddTabButtonVisible = true,
-            CanReorderTabs = true,
-            TabWidthMode = TabViewWidthMode.SizeToContent,
-            CloseButtonOverlayMode = TabViewCloseButtonOverlayMode.OnPointerOver,
-            // Suprime os balões de atalho (ex.: "Ctrl+F4") que o TabView mostra.
-            KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden,
+            Content = "+",
+            FontSize = 16,
+            Width = 32,
+            Height = 32,
+            Margin = new Thickness(4),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
         };
-        tv.AddTabButtonClick += (_, _) =>
-            AddTab(new TotemTab { Name = $"Aba {tv.TabItems.Count + 1}", Items = [new TotemItem { Label = "" }] });
-        tv.TabCloseRequested += (_, e) =>
-        {
-            tv.TabItems.Remove(e.Tab);
-            if (tv.TabItems.Count == 0)
-                AddTab(new TotemTab { Name = "Aba 1", Items = [new TotemItem { Label = "" }] });
-        };
-        tv.SelectionChanged += (_, _) => UpdateTabPipes();
-        return tv;
+        button.Click += (_, _) =>
+            AddTab(new TotemTab { Name = $"Aba {Tabs.Items.Count}", Items = [new TotemItem { Label = "" }] });
+
+        return new TabItem { Header = button, Tag = "AddButton", Focusable = false };
     }
 
-    private static string GetTabName(TabViewItem tab) =>
-        tab.Header is Grid g
-            ? (g.Children.OfType<TextBlock>().FirstOrDefault()?.Text ?? "Aba")
-            : tab.Header?.ToString() ?? "Aba";
-
-    private static void SetTabName(TabViewItem tab, string name)
-    {
-        var tb = tab.Header is Grid g ? g.Children.OfType<TextBlock>().FirstOrDefault() : null;
-        if (tb != null) tb.Text = name;
-    }
+    // ── Tabs ─────────────────────────────────────────────────────────────────
 
     private void AddTab(TotemTab model)
     {
         var page = new TotemPage(model);
         page.Changed += ScheduleSave;
 
-        var pipe = new Border
+        var tab = new TabItem
         {
-            Height = 2,
-            VerticalAlignment = VerticalAlignment.Top,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Background = TabTopBorderBrush,
-            CornerRadius = new CornerRadius(1),
-            Visibility = Visibility.Collapsed,
-        };
-        var header = new Grid();
-        header.Children.Add(new TextBlock
-        {
-            Text = model.Name,
-            TextAlignment = TextAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(10, 2, 10, 0),
-        });
-        header.Children.Add(pipe);
-
-        var item = new TabViewItem
-        {
-            Header = header,
+            Header = model.Name,
             Content = page,
-            IsClosable = false,
-            KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
+            AllowDrop = true,
         };
-        ApplySelectedTabStyle(item);
-        item.ContextFlyout = BuildTabMenu(item);
+        tab.ContextMenu = BuildTabMenu(tab);
+        tab.PreviewMouseLeftButtonDown += TabItem_PreviewMouseLeftButtonDown;
+        tab.PreviewMouseMove += TabItem_PreviewMouseMove;
+        tab.Drop += TabItem_Drop;
 
-        _tabs.TabItems.Add(item);
-        _tabs.SelectedItem = item;
+        var insertIndex = _addTabItem is null ? Tabs.Items.Count : Tabs.Items.IndexOf(_addTabItem);
+        Tabs.Items.Insert(insertIndex, tab);
+        Tabs.SelectedItem = tab;
+        ScheduleSave();
     }
 
-    private void UpdateTabPipes()
+    private static string GetTabName(TabItem tab) => tab.Header?.ToString() ?? "Aba";
+
+    private ContextMenu BuildTabMenu(TabItem tab)
     {
-        foreach (var obj in _tabs.TabItems)
-        {
-            if (obj is not TabViewItem tab || tab.Header is not Grid g) continue;
-            var pipe = g.Children.OfType<Border>().FirstOrDefault();
-            if (pipe != null)
-                pipe.Visibility = tab.IsSelected ? Visibility.Visible : Visibility.Collapsed;
-        }
-    }
+        var menu = new ContextMenu();
 
-    // A faixa (strip) fica escura; abas não selecionadas são transparentes e se
-    // fundem com ela; a aba selecionada usa a cor sólida de fundo do tema para
-    // "destacar" da faixa escura e se aproximar visualmente da área de conteúdo.
-    private static readonly SolidColorBrush TabTopBorderBrush =
-        new(ItemControl.AccentColor);
-    private Brush _tabStripBrush    = new SolidColorBrush(Windows.UI.Color.FromArgb(80, 0, 0, 0));
-    private Brush _tabSelectedBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 32, 32, 32));
-    private Brush _tabRestBrush     = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
-    private Brush _tabHoverBrush    = new SolidColorBrush(Windows.UI.Color.FromArgb(20, 255, 255, 255));
-
-    private void ApplyAllTheme()
-    {
-        // ── botões da barra de título (min/max/fechar) ─────────────────────────
-        var tb = AppWindow.TitleBar;
-        var btnFg = Windows.UI.Color.FromArgb(255, 255, 255, 255);
-        tb.ButtonForegroundColor         = btnFg;
-        tb.ButtonHoverForegroundColor    = btnFg;
-        tb.ButtonPressedForegroundColor  = btnFg;
-        tb.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(100, btnFg.R, btnFg.G, btnFg.B);
-        tb.ButtonHoverBackgroundColor    = Windows.UI.Color.FromArgb(32, 255, 255, 255);
-
-        // ── faixa e cores das abas ─────────────────────────────────────────────
-        _tabSelectedBrush = (Brush)Application.Current.Resources["SolidBackgroundFillColorBaseBrush"];
-        _tabStripBrush    = new SolidColorBrush(Windows.UI.Color.FromArgb(80, 0, 0, 0));
-        _tabRestBrush     = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
-        _tabHoverBrush    = new SolidColorBrush(Windows.UI.Color.FromArgb(25, 0xFF, 0xFF, 0xFF));
-
-        if (_tabStrip is not null) _tabStrip.Background = _tabStripBrush;
-        if (_tabs is not null)
-            foreach (var obj in _tabs.TabItems)
-                if (obj is TabViewItem it) ApplySelectedTabStyle(it);
-    }
-
-    private void ApplySelectedTabStyle(TabViewItem item)
-    {
-        item.Resources["TabViewItemHeaderBackground"] = _tabRestBrush;
-        item.Resources["TabViewItemHeaderBackgroundPointerOver"] = _tabHoverBrush;
-        item.Resources["TabViewItemHeaderBackgroundPressed"] = _tabHoverBrush;
-        item.Resources["TabViewItemHeaderBackgroundSelected"] = _tabSelectedBrush;
-        item.Resources["TabViewItemHeaderBackgroundSelectedPointerOver"] = _tabSelectedBrush;
-        item.Resources["TabViewItemHeaderBackgroundSelectedPressed"] = _tabSelectedBrush;
-    }
-
-    private MenuFlyout BuildTabMenu(TabViewItem tab)
-    {
-        var menu = new MenuFlyout();
-
-        var rename = new MenuFlyoutItem { Text = "Renomear", Icon = new FontIcon { Glyph = "" } };
+        var rename = new MenuItem { Header = "Renomear" };
         rename.Click += async (_, _) => await RenameTabAsync(tab);
         menu.Items.Add(rename);
 
-        var delete = new MenuFlyoutItem { Text = "Excluir", Icon = new FontIcon { Glyph = "" } };
+        var delete = new MenuItem { Header = "Excluir" };
         delete.Click += (_, _) =>
         {
-            _tabs.TabItems.Remove(tab);
-            if (_tabs.TabItems.Count == 0)
+            Tabs.Items.Remove(tab);
+            if (Tabs.Items.Count == (_addTabItem is null ? 0 : 1))
                 AddTab(new TotemTab { Name = "Aba 1" });
+            ScheduleSave();
         };
         menu.Items.Add(delete);
 
         return menu;
     }
 
-    private async Task RenameTabAsync(TabViewItem tab)
+    private async Task RenameTabAsync(TabItem tab)
     {
-        var input = new TextBox { Text = GetTabName(tab), SelectionStart = 0 };
-        var dialog = new ContentDialog
+        var input = new TextBox { Text = GetTabName(tab) };
+        var dialog = new Wpf.Ui.Controls.ContentDialog(RootContentDialogHost)
         {
             Title = "Renomear aba",
             Content = input,
             PrimaryButtonText = "Salvar",
             CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = Content.XamlRoot,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(input.Text))
+        if (await dialog.ShowAsync() == Wpf.Ui.Controls.ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(input.Text))
         {
-            SetTabName(tab, input.Text.Trim());
+            tab.Header = input.Text.Trim();
             ScheduleSave();
         }
     }
 
-    // ── Exportar ─────────────────────────────────────────────────────────────
+    private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e) => ScheduleSave();
 
-    private async void ExportMenuItem_Click(object sender, RoutedEventArgs e)
+    // ── Tab drag reorder ─────────────────────────────────────────────────────
+
+    private void TabItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var senha = await AskNewPasswordAsync();
-        if (senha is null) return;
+        _tabDragStart = e.GetPosition(null);
+        _tabDragSource = sender as TabItem;
+    }
 
-        var picker = new FileSavePicker
-        {
-            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
-            SuggestedFileName = "totem",
-        };
-        picker.FileTypeChoices.Add("Totem (criptografado)", new List<string> { ".ttm" });
-        InitializePicker(picker);
+    private void TabItem_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_tabDragSource is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _tabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
 
-        var arquivo = await picker.PickSaveFileAsync();
-        if (arquivo is null) return;
+        var source = _tabDragSource;
+        _tabDragSource = null;
+        DragDrop.DoDragDrop(source, source, DragDropEffects.Move);
+    }
+
+    private void TabItem_Drop(object sender, DragEventArgs e)
+    {
+        if (sender is not TabItem target ||
+            e.Data.GetData(typeof(TabItem)) is not TabItem source ||
+            ReferenceEquals(source, target))
+            return;
+
+        var newIndex = Tabs.Items.IndexOf(target);
+        Tabs.Items.Remove(source);
+        Tabs.Items.Insert(newIndex, source);
+        Tabs.SelectedItem = source;
+        ScheduleSave();
+    }
+
+    // ── About popup ──────────────────────────────────────────────────────────
+
+    private void AboutButton_Click(object sender, RoutedEventArgs e) => AboutPopup.IsOpen = !AboutPopup.IsOpen;
+
+    // ── Export ───────────────────────────────────────────────────────────────
+
+    private async void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        var password = await AskNewPasswordAsync();
+        if (password is null) return;
+
+        var dialog = new SaveFileDialog { Filter = "Totem (criptografado)|*.ttm", FileName = "totem" };
+        if (dialog.ShowDialog() != true) return;
 
         try
         {
             var json = JsonSerializer.Serialize(BuildDocument(), JsonOptions);
-            var bytes = TotemCrypto.Encrypt(json, senha);
-            await File.WriteAllBytesAsync(arquivo.Path, bytes);
-            await InfoAsync("Exportado", $"Arquivo salvo com sucesso em:\n{arquivo.Path}");
+            var bytes = TotemCrypto.Encrypt(json, password);
+            File.WriteAllBytes(dialog.FileName, bytes);
+            await InfoAsync("Exportado", $"Arquivo salvo com sucesso em:\n{dialog.FileName}");
         }
         catch (Exception ex)
         {
@@ -317,25 +211,21 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // ── Importar ─────────────────────────────────────────────────────────────
+    // ── Import ───────────────────────────────────────────────────────────────
 
-    private async void ImportMenuItem_Click(object sender, RoutedEventArgs e)
+    private async void ImportButton_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-        picker.FileTypeFilter.Add(".ttm");
-        InitializePicker(picker);
+        var picker = new OpenFileDialog { Filter = "Totem (criptografado)|*.ttm" };
+        if (picker.ShowDialog() != true) return;
 
-        var arquivo = await picker.PickSingleFileAsync();
-        if (arquivo is null) return;
-
-        var senha = await AskPasswordAsync();
-        if (senha is null) return;
+        var password = await AskPasswordAsync();
+        if (password is null) return;
 
         TotemDocument? doc;
         try
         {
-            var bytes = await File.ReadAllBytesAsync(arquivo.Path);
-            var json = TotemCrypto.Decrypt(bytes, senha);
+            var bytes = File.ReadAllBytes(picker.FileName);
+            var json = TotemCrypto.Decrypt(bytes, password);
             doc = JsonSerializer.Deserialize<TotemDocument>(json);
         }
         catch (CryptographicException)
@@ -366,11 +256,11 @@ public sealed partial class MainWindow : Window
         ScheduleSave();
     }
 
-    // ── Cache automático (DPAPI / CurrentUser) ───────────────────────────────
+    // ── Automatic cache (DPAPI / CurrentUser) ───────────────────────────────
 
     private void ScheduleSave()
     {
-        if (!_loaded) return; // não persiste durante a carga inicial
+        if (!_loaded) return; // don't persist during the initial load
         _saveDebounce ??= CreateDebounce();
         _saveDebounce.Stop();
         _saveDebounce.Start();
@@ -379,102 +269,87 @@ public sealed partial class MainWindow : Window
     private DispatcherTimer CreateDebounce()
     {
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
-        timer.Tick += async (_, _) => { timer.Stop(); await SaveCacheAsync(); };
+        timer.Tick += (_, _) => { timer.Stop(); SaveCache(); };
         return timer;
     }
 
-    private async Task SaveCacheAsync()
+    private void SaveCache()
     {
         try
         {
             var json = JsonSerializer.Serialize(BuildDocument(), JsonOptions);
-            var provider = new DataProtectionProvider("LOCAL=user");
-            var input = CryptographicBuffer.CreateFromByteArray(Encoding.UTF8.GetBytes(json));
-            var protectedBuffer = await provider.ProtectAsync(input);
-            CryptographicBuffer.CopyToByteArray(protectedBuffer, out var protectedBytes);
+            var protectedBytes = ProtectedData.Protect(
+                Encoding.UTF8.GetBytes(json), null, DataProtectionScope.CurrentUser);
 
             Directory.CreateDirectory(Path.GetDirectoryName(CachePath)!);
-            await File.WriteAllBytesAsync(CachePath, protectedBytes);
+            File.WriteAllBytes(CachePath, protectedBytes);
         }
-        catch { /* cache é best-effort */ }
+        catch (Exception ex)
+        {
+            // cache is best-effort: never surfaces to the user, but worth a trace
+            // so a silently-broken autosave can be diagnosed after the fact.
+            Log.Error("SaveCache", ex);
+        }
     }
 
-    private async Task<TotemDocument?> LoadCacheAsync()
+    private TotemDocument? LoadCache()
     {
         try
         {
             if (!File.Exists(CachePath)) return null;
-            var protectedBytes = await File.ReadAllBytesAsync(CachePath);
-            var provider = new DataProtectionProvider();
-            var buffer = await provider.UnprotectAsync(CryptographicBuffer.CreateFromByteArray(protectedBytes));
-            CryptographicBuffer.CopyToByteArray(buffer, out var data);
-            var doc = JsonSerializer.Deserialize<TotemDocument>(Encoding.UTF8.GetString(data));
-            // Ignora cache de uma versão mais nova (downgrade do app): recriar é mais
-            // seguro que reinterpretar um formato que ainda não conhecemos.
+            var protectedBytes = File.ReadAllBytes(CachePath);
+            var bytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
+            var doc = JsonSerializer.Deserialize<TotemDocument>(Encoding.UTF8.GetString(bytes));
+            // Ignore a cache from a newer version (app downgrade): recreating it is safer
+            // than reinterpreting a format we don't understand yet.
             return doc is not null && doc.Version <= TotemDocument.CurrentVersion ? doc : null;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("LoadCache", ex);
             return null;
         }
     }
 
-    // ── Documento <-> UI ─────────────────────────────────────────────────────
+    // ── Document <-> UI ─────────────────────────────────────────────────────
 
     private TotemDocument BuildDocument()
     {
         var doc = new TotemDocument();
-        foreach (var obj in _tabs.TabItems)
+        foreach (var obj in Tabs.Items)
         {
-            if (obj is TabViewItem tab && tab.Content is TotemPage page)
+            if (obj is TabItem tab && tab.Content is TotemPage page)
             {
-                doc.Tabs.Add(new TotemTab
-                {
-                    Name = GetTabName(tab),
-                    Items = page.GetItems(),
-                });
+                doc.Tabs.Add(new TotemTab { Name = GetTabName(tab), Items = page.GetItems() });
             }
         }
-        doc.SelectedTab = _tabs.SelectedIndex;
+        doc.SelectedTab = Tabs.SelectedIndex;
         return doc;
     }
 
     private void LoadDocument(TotemDocument doc)
     {
-        _tabs.TabItems.Clear();
+        for (var i = Tabs.Items.Count - 1; i >= 0; i--)
+            if (!ReferenceEquals(Tabs.Items[i], _addTabItem))
+                Tabs.Items.RemoveAt(i);
+
         foreach (var tab in doc.Tabs)
             AddTab(tab);
-        if (_tabs.TabItems.Count == 0)
+
+        var realCount = Tabs.Items.Count - (_addTabItem is null ? 0 : 1);
+        if (realCount == 0)
             AddTab(new TotemTab { Name = "Aba 1", Items = [new TotemItem { Label = "" }] });
 
-        // Restaura a aba que estava ativa. Precisa ser adiado: o TabView redefine a
-        // seleção quando os itens entram na árvore visual, sobrescrevendo um set
-        // síncrono feito aqui. Aplicamos via DispatcherQueue, após a montagem.
-        var alvo = doc.SelectedTab;
-        if (alvo >= 0 && alvo < _tabs.TabItems.Count)
-        {
-            var item = _tabs.TabItems[alvo];
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (_tabs.TabItems.Contains(item))
-                    _tabs.SelectedItem = item;
-            });
-        }
+        if (doc.SelectedTab >= 0 && doc.SelectedTab < realCount)
+            Tabs.SelectedIndex = doc.SelectedTab;
     }
 
-    // ── Diálogos ─────────────────────────────────────────────────────────────
+    // ── Dialogs ─────────────────────────────────────────────────────────────
 
     private async Task<string?> AskNewPasswordAsync()
     {
-        var pwd = new PasswordBox { PlaceholderText = "Senha", Margin = new Thickness(0, 0, 0, 8) };
-        var confirm = new PasswordBox { PlaceholderText = "Confirmar senha" };
-        var error = new TextBlock
-        {
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
-            FontSize = 12,
-            Visibility = Visibility.Collapsed,
-            Margin = new Thickness(0, 6, 0, 0),
-        };
+        var pwd = new PasswordBox { Margin = new Thickness(0, 0, 0, 8) };
+        var confirm = new PasswordBox();
 
         var panel = new StackPanel { Width = 300 };
         panel.Children.Add(new TextBlock
@@ -483,71 +358,55 @@ public sealed partial class MainWindow : Window
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 10),
         });
+        panel.Children.Add(new TextBlock { Text = "Senha", FontSize = 12, Margin = new Thickness(0, 0, 0, 2) });
         panel.Children.Add(pwd);
+        panel.Children.Add(new TextBlock { Text = "Confirmar senha", FontSize = 12, Margin = new Thickness(0, 8, 0, 2) });
         panel.Children.Add(confirm);
-        panel.Children.Add(error);
 
-        var dialog = new ContentDialog
+        var dialog = new Wpf.Ui.Controls.ContentDialog(RootContentDialogHost)
         {
             Title = "Exportar (.ttm)",
             Content = panel,
             PrimaryButtonText = "Exportar",
             CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = Content.XamlRoot,
         };
 
-        dialog.PrimaryButtonClick += (_, args) =>
+        if (await dialog.ShowAsync() != Wpf.Ui.Controls.ContentDialogResult.Primary) return null;
+
+        if (string.IsNullOrEmpty(pwd.Password))
         {
-            if (string.IsNullOrEmpty(pwd.Password))
-            {
-                error.Text = "Informe uma senha.";
-                error.Visibility = Visibility.Visible;
-                args.Cancel = true;
-            }
-            else if (pwd.Password != confirm.Password)
-            {
-                error.Text = "As senhas não conferem.";
-                error.Visibility = Visibility.Visible;
-                args.Cancel = true;
-            }
-        };
-
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? pwd.Password : null;
+            await InfoAsync("Exportar (.ttm)", "Informe uma senha.");
+            return null;
+        }
+        if (pwd.Password != confirm.Password)
+        {
+            await InfoAsync("Exportar (.ttm)", "As senhas não conferem.");
+            return null;
+        }
+        return pwd.Password;
     }
 
     private async Task<string?> AskPasswordAsync()
     {
-        var pwd = new PasswordBox { PlaceholderText = "Senha", Width = 300 };
-        var dialog = new ContentDialog
+        var pwd = new PasswordBox { Width = 300 };
+        var dialog = new Wpf.Ui.Controls.ContentDialog(RootContentDialogHost)
         {
             Title = "Importar (.ttm)",
             Content = pwd,
             PrimaryButtonText = "Importar",
             CloseButtonText = "Cancelar",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = Content.XamlRoot,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? pwd.Password : null;
+        return await dialog.ShowAsync() == Wpf.Ui.Controls.ContentDialogResult.Primary ? pwd.Password : null;
     }
 
     private async Task InfoAsync(string title, string message)
     {
-        var dialog = new ContentDialog
+        var dialog = new Wpf.Ui.Controls.ContentDialog(RootContentDialogHost)
         {
             Title = title,
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
             CloseButtonText = "OK",
-            XamlRoot = Content.XamlRoot,
         };
         await dialog.ShowAsync();
-    }
-
-    // ── Pickers (unpackaged precisa do HWND) ─────────────────────────────────
-
-    private void InitializePicker(object picker)
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
     }
 }

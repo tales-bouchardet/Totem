@@ -1,0 +1,29 @@
+<UserControl
+    x:Class="totem.TotemPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Background="Transparent">
+        <Grid.ContextMenu>
+            <ContextMenu>
+                <MenuItem Header="Novo input" Click="NewInput_Click" />
+            </ContextMenu>
+        </Grid.ContextMenu>
+
+        <TextBlock
+            x:Name="Placeholder"
+            Text="Clique aqui com o botão direito para adicionar um novo input"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontSize="14"
+            Opacity="0.6"
+            IsHitTestVisible="False" />
+
+        <ScrollViewer
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            Background="Transparent">
+            <StackPanel x:Name="ItemsPanel" Margin="24,16" HorizontalAlignment="Stretch" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

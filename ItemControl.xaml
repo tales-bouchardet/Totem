@@ -1,0 +1,319 @@
+<UserControl
+    x:Class="totem.ItemControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    HorizontalAlignment="Stretch"
+    MinWidth="500"
+    MaxWidth="900"
+    Margin="0,0,0,12">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="PillBrush" Color="#332678" />
+        <SolidColorBrush x:Key="PillBorderBrush" Color="#4E2ACC" />
+        <SolidColorBrush x:Key="PillTextBrush" Color="#F2F0FF" />
+        <SolidColorBrush x:Key="PillPlaceholderBrush" Color="#8CF2F0FF" />
+        <SolidColorBrush x:Key="InputBg" Color="#0DFFFFFF" />
+        <SolidColorBrush x:Key="PlainTextBg" Color="#1EFFFFFF" />
+        <SolidColorBrush x:Key="CodeBg" Color="#141414" />
+        <SolidColorBrush x:Key="BorderBrush2" Color="#33FFFFFF" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#4E2ACC" />
+        <FontFamily x:Key="CodeFont">./font/#DM Mono</FontFamily>
+        <FontFamily x:Key="AppFont">./font/#Ubuntu Mono</FontFamily>
+
+        <!-- WPF-UI's themed TextBox/RichTextBox templates carry their own inner
+             padding and a "content box" background/focus chrome, independent of the
+             Padding property. Since the block's own Border already provides all the
+             chrome we want, these bare templates strip it down to just the text. -->
+        <Style x:Key="PlainTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource PillTextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <ScrollViewer
+                            x:Name="PART_ContentHost"
+                            Background="{TemplateBinding Background}"
+                            Focusable="False" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PlainRichTextBoxStyle" TargetType="RichTextBox">
+            <Setter Property="Foreground" Value="{StaticResource PillTextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RichTextBox">
+                        <ScrollViewer
+                            x:Name="PART_ContentHost"
+                            Background="{TemplateBinding Background}"
+                            Focusable="False" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <ContextMenu x:Key="InputContextMenu" Opened="ContentContextMenu_Opened">
+            <MenuItem Header="Copiar" Click="CopyMenuItem_Click" />
+            <Separator />
+            <MenuItem Header="Inserir input acima" Click="InsertAbove_Click" />
+            <MenuItem Header="Inserir input abaixo" Click="InsertBelow_Click" />
+            <MenuItem Header="Adicionar separador abaixo" Click="InsertSeparatorBelow_Click" />
+            <Separator />
+            <MenuItem Header="Editar" Click="Edit_Click" />
+            <MenuItem Header="Adicionar label" Click="EditLabel_Click" />
+            <MenuItem Header="Bloco de código">
+                <MenuItem Header="CMD (Batch)" Click="SetCodeCmd_Click" />
+                <MenuItem Header="PowerShell" Click="SetCodePowerShell_Click" />
+                <MenuItem Header="SQL" Click="SetCodeSql_Click" />
+                <MenuItem Header="VBScript" Click="SetCodeVbs_Click" />
+                <Separator />
+                <MenuItem Header="Texto puro" Click="SetPlainText_Click" />
+                <MenuItem Header="Markdown" Click="SetPlain_Click" />
+            </MenuItem>
+            <MenuItem Header="Inserir imagem" Click="InsertImage_Click" />
+            <Separator />
+            <MenuItem Header="Excluir" Click="Delete_Click" />
+        </ContextMenu>
+
+        <ContextMenu x:Key="LabelContextMenu">
+            <MenuItem Header="Editar" Click="EditLabel_Click" />
+            <MenuItem Header="Excluir label" Click="RemoveLabel_Click" />
+        </ContextMenu>
+
+        <ContextMenu x:Key="SeparatorContextMenu">
+            <MenuItem Header="Inserir input acima" Click="InsertAbove_Click" />
+            <MenuItem Header="Inserir input abaixo" Click="InsertBelow_Click" />
+            <Separator />
+            <MenuItem Header="Excluir separador" Click="Delete_Click" />
+        </ContextMenu>
+
+        <ContextMenu x:Key="ImageContextMenu">
+            <MenuItem Header="Copiar imagem" Click="CopyImage_Click" />
+            <MenuItem Header="Copiar como arquivo" Click="CopyImageAsFile_Click" />
+            <Separator />
+            <MenuItem Header="Trocar imagem" Click="InsertImage_Click" />
+            <Separator />
+            <MenuItem Header="Inserir input acima" Click="InsertAbove_Click" />
+            <MenuItem Header="Inserir input abaixo" Click="InsertBelow_Click" />
+            <MenuItem Header="Adicionar separador abaixo" Click="InsertSeparatorBelow_Click" />
+            <Separator />
+            <MenuItem Header="Adicionar label" Click="EditLabel_Click" />
+            <Separator />
+            <MenuItem Header="Remover imagem" Click="RemoveImage_Click" />
+            <MenuItem Header="Excluir" Click="Delete_Click" />
+        </ContextMenu>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- separator visual: the only thing shown when Model.IsSeparator -->
+        <Border
+            x:Name="SeparatorVisual"
+            Height="1"
+            Background="{StaticResource BorderBrush2}"
+            Margin="50,14,50,14"
+            Visibility="Collapsed"
+            ContextMenu="{StaticResource SeparatorContextMenu}" />
+
+        <Grid x:Name="MainContentGrid">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- label: always-visible pill (placeholder when empty) -->
+            <Border
+                x:Name="LabelPill"
+                Grid.Row="0"
+                Background="{StaticResource PillBrush}"
+                BorderBrush="{StaticResource PillBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="5"
+                MinWidth="48"
+                HorizontalAlignment="Left"
+                Margin="14,0,0,-7"
+                Panel.ZIndex="1"
+                Visibility="Collapsed"
+                ContextMenu="{StaticResource LabelContextMenu}">
+                <TextBlock
+                    x:Name="LabelText"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    TextAlignment="Center"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Margin="13,2,13,2" />
+            </Border>
+
+            <!-- content: text/code editor, code reader, markdown reader, image — one visible at a time -->
+            <Grid Grid.Row="1">
+
+                <!-- text-family area: plain text / markdown source / code (edit and read) -->
+                <Border
+                    x:Name="TextAreaBorder"
+                    Background="{StaticResource InputBg}"
+                    BorderBrush="{StaticResource BorderBrush2}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="16,10,16,10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock
+                            x:Name="CodeBadge"
+                            Grid.Row="0"
+                            HorizontalAlignment="Right"
+                            FontSize="12"
+                            Opacity="0.5"
+                            Foreground="{StaticResource PillTextBrush}"
+                            Visibility="Collapsed" />
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <ScrollViewer
+                                x:Name="GutterScrollViewer"
+                                Grid.Column="0"
+                                MaxHeight="300"
+                                VerticalScrollBarVisibility="Hidden"
+                                HorizontalScrollBarVisibility="Disabled"
+                                IsHitTestVisible="False"
+                                Margin="0,0,12,0">
+                                <TextBlock
+                                    x:Name="CodeGutter"
+                                    FontFamily="{StaticResource CodeFont}"
+                                    FontSize="14"
+                                    TextAlignment="Right"
+                                    Opacity="0.5"
+                                    Visibility="Collapsed" />
+                            </ScrollViewer>
+
+                            <Grid Grid.Column="1">
+                                <!-- code block: edit and read share the same look, but are still
+                                     two controls (RichEditing a live-highlighted document while
+                                     typing isn't worth the complexity a single control would need) -->
+                                <TextBox
+                                    x:Name="InputBox"
+                                    Style="{StaticResource PlainTextBoxStyle}"
+                                    MaxHeight="300"
+                                    Padding="0"
+                                    FontFamily="{StaticResource CodeFont}"
+                                    FontSize="14"
+                                    AcceptsReturn="True"
+                                    TextWrapping="NoWrap"
+                                    IsReadOnly="True"
+                                    BorderThickness="0"
+                                    Background="Transparent"
+                                    ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                    ContextMenu="{StaticResource InputContextMenu}"
+                                    PreviewMouseLeftButtonUp="Content_PreviewMouseLeftButtonUp"
+                                    PreviewKeyDown="InputBox_PreviewKeyDown"
+                                    LostFocus="InputBox_LostFocus"
+                                    TextChanged="InputBox_TextChanged"
+                                    Visibility="Collapsed" />
+
+                                <RichTextBox
+                                    x:Name="CodeReadView"
+                                    Style="{StaticResource PlainRichTextBoxStyle}"
+                                    MaxHeight="300"
+                                    Padding="0"
+                                    IsReadOnly="True"
+                                    IsReadOnlyCaretVisible="False"
+                                    BorderThickness="0"
+                                    Background="Transparent"
+                                    FontFamily="{StaticResource CodeFont}"
+                                    FontSize="14"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                    ContextMenu="{StaticResource InputContextMenu}"
+                                    PreviewMouseLeftButtonUp="Content_PreviewMouseLeftButtonUp"
+                                    Visibility="Collapsed" />
+
+                                <!-- Plain text / Markdown: ONE RichTextBox for both editing and
+                                     reading, just toggling IsReadOnly and rebuilding its document —
+                                     not a TextBox for editing plus a separate renderer for reading,
+                                     which could never quite agree on line height/padding. -->
+                                <RichTextBox
+                                    x:Name="ContentBox"
+                                    Style="{StaticResource PlainRichTextBoxStyle}"
+                                    MaxHeight="300"
+                                    Padding="0"
+                                    IsReadOnly="True"
+                                    IsReadOnlyCaretVisible="False"
+                                    AcceptsReturn="True"
+                                    BorderThickness="0"
+                                    Background="Transparent"
+                                    FontFamily="{StaticResource AppFont}"
+                                    FontSize="16"
+                                    ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                    ContextMenu="{StaticResource InputContextMenu}"
+                                    PreviewMouseLeftButtonUp="Content_PreviewMouseLeftButtonUp"
+                                    LostFocus="ContentBox_LostFocus"
+                                    TextChanged="ContentBox_TextChanged"
+                                    Visibility="Collapsed">
+                                    <RichTextBox.Resources>
+                                        <!-- Enter creates a new Paragraph, not a LineBreak; without
+                                             this every typed line would get the theme's default
+                                             paragraph spacing between it and the next. -->
+                                        <Style TargetType="Paragraph">
+                                            <Setter Property="Margin" Value="0" />
+                                        </Style>
+                                    </RichTextBox.Resources>
+                                </RichTextBox>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- empty-state placeholder: overlays whichever border is showing -->
+                <TextBlock
+                    x:Name="InputPlaceholder"
+                    Text="(vazio — clique direito › Editar)"
+                    FontSize="14"
+                    Opacity="0.6"
+                    Margin="16,10,16,10"
+                    IsHitTestVisible="False"
+                    Visibility="Collapsed" />
+
+                <!-- image block -->
+                <Border
+                    x:Name="ImageBorder"
+                    Background="{StaticResource InputBg}"
+                    BorderBrush="{StaticResource BorderBrush2}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8"
+                    Visibility="Collapsed"
+                    ContextMenu="{StaticResource ImageContextMenu}"
+                    PreviewMouseLeftButtonUp="ImageBorder_PreviewMouseLeftButtonUp">
+                    <Image x:Name="ImageControl" MaxHeight="200" MaxWidth="400" Stretch="Uniform" />
+                </Border>
+
+                <!-- copy feedback -->
+                <TextBlock
+                    x:Name="CopiedText"
+                    Text="Copiado!"
+                    FontSize="12"
+                    Foreground="{StaticResource PillTextBrush}"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,8,6"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False" />
+                <Border
+                    x:Name="CopyFlash"
+                    BorderBrush="{StaticResource AccentBrush}"
+                    BorderThickness="2"
+                    CornerRadius="4"
+                    Opacity="0"
+                    IsHitTestVisible="False" />
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

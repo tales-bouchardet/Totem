@@ -1,100 +1,80 @@
-using Microsoft.UI.Text;
-using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
-using Windows.UI;
+using System.Windows;
+using System.Windows.Documents;
+using System.Windows.Media;
 
 namespace totem;
 
 /// <summary>
-/// Realce de sintaxe leve (sem dependências externas) para as linguagens do modo
-/// "bloco de código": CMD, PowerShell, SQL e VBScript. Um único tokenizador alimenta
-/// duas saídas: um <see cref="Paragraph"/> com <see cref="Run"/>s coloridos para o
-/// RichTextBlock (leitura) e a coloração caractere-a-caractere de um RichEditBox
-/// (edição com realce ao vivo). As bibliotecas prontas (ColorCode etc.) não cobrem
-/// CMD nem VBScript — paleta inspirada no tema escuro do VS Code.
+/// Lightweight syntax highlighting (no external dependencies) for the "code block"
+/// mode's languages: CMD, PowerShell, SQL and VBScript. Builds a <see cref="Paragraph"/>
+/// with colored <see cref="Run"/>s for a read-only RichTextBox. Off-the-shelf
+/// libraries (ColorCode etc.) don't cover CMD or VBScript — palette inspired by
+/// VS Code's dark theme.
 /// </summary>
 public static class CodeHighlighter
 {
     private static SolidColorBrush Brush(byte r, byte g, byte b) =>
         new(Color.FromArgb(255, r, g, b));
 
-    private static readonly Brush CommentBrush  = Brush(0x6A, 0x99, 0x55); // verde
-    private static readonly Brush KeywordBrush  = Brush(0x56, 0x9C, 0xD6); // azul
-    private static readonly Brush StringBrush   = Brush(0xCE, 0x91, 0x78); // laranja
-    private static readonly Brush NumberBrush   = Brush(0xB5, 0xCE, 0xA8); // verde claro
-    private static readonly Brush VariableBrush = Brush(0x9C, 0xDC, 0xFE); // azul claro
-    private static readonly Brush FunctionBrush = Brush(0xDC, 0xDC, 0xAA); // amarelo
-    private static readonly Brush ExecutableBrush = Brush(0x89, 0xD1, 0x85); // verde (executáveis)
-    private static readonly Brush ParameterBrush = Brush(0x9D, 0x9D, 0x9D); // cinza (parâmetros)
+    private static readonly Brush CommentBrush  = Brush(0x6A, 0x99, 0x55); // green
+    private static readonly Brush KeywordBrush  = Brush(0x56, 0x9C, 0xD6); // blue
+    private static readonly Brush StringBrush   = Brush(0xCE, 0x91, 0x78); // orange
+    private static readonly Brush NumberBrush   = Brush(0xB5, 0xCE, 0xA8); // light green
+    private static readonly Brush VariableBrush = Brush(0x9C, 0xDC, 0xFE); // light blue
+    private static readonly Brush FunctionBrush = Brush(0xDC, 0xDC, 0xAA); // yellow
+    private static readonly Brush ExecutableBrush = Brush(0x89, 0xD1, 0x85); // green (executables)
+    private static readonly Brush ParameterBrush = Brush(0x9D, 0x9D, 0x9D); // gray (parameters)
+    private static readonly Brush DefaultBrush = Brush(0xFF, 0xFF, 0xFF);
 
-    /// <summary>Um trecho contíguo do código com sua cor (null = cor padrão do texto).</summary>
-    private readonly record struct Span(int Start, int Length, Brush? Brush);
+    /// <summary>A contiguous span of code with its color (null = default text color).</summary>
+    private readonly struct Span
+    {
+        public readonly int Start;
+        public readonly int Length;
+        public readonly Brush? Brush;
 
-    /// <summary>
-    /// Constrói o parágrafo colorido (modo leitura, RichTextBlock).
-    /// </summary>
+        public Span(int start, int length, Brush? brush)
+        {
+            Start = start;
+            Length = length;
+            Brush = brush;
+        }
+    }
+
+    /// <summary>Builds the colored paragraph for a read-only RichTextBox.</summary>
     public static Paragraph BuildParagraph(string code, string? languageId)
     {
-        var para = new Paragraph();
+        var para = new Paragraph { Margin = new Thickness(0) };
         if (string.IsNullOrEmpty(code))
             return para;
 
         foreach (var s in Tokenize(code, LangFor(languageId)))
         {
-            var run = new Run { Text = code.Substring(s.Start, s.Length) };
-            if (s.Brush is not null) run.Foreground = s.Brush;
+            var run = new Run(code.Substring(s.Start, s.Length)) { Foreground = s.Brush ?? DefaultBrush };
             para.Inlines.Add(run);
         }
         return para;
     }
 
-    /// <summary>
-    /// Aplica o realce ao vivo a um RichEditBox apenas na faixa <c>[from, to)</c>:
-    /// repõe a cor padrão nessa faixa e colore os tokens que a tocam. Recolorir só a
-    /// região alterada (em vez do documento todo) é o que mantém a edição fluida em
-    /// arquivos grandes — as cores do restante acompanham o texto sozinhas.
-    /// <paramref name="code"/> deve ser exatamente o texto de
-    /// <c>doc.GetText(TextGetOptions.None)</c> para os índices casarem ('\r' = quebra).
-    /// </summary>
-    public static void ApplyToDocument(RichEditTextDocument doc, string code, string? languageId, Color defaultColor, int from, int to)
-    {
-        from = Math.Max(0, from);
-        to = Math.Min(to, code.Length);
-        if (to < from) to = from;
-        doc.GetRange(from, to).CharacterFormat.ForegroundColor = defaultColor;
-        if (to <= from) return;
-
-        // Tokeniza só até 'to' (precisa varrer desde o início para conhecer o estado de
-        // comentário de bloco), mas as chamadas COM de cor ficam restritas à faixa.
-        foreach (var s in Tokenize(code, LangFor(languageId), to))
-        {
-            if (s.Brush is not SolidColorBrush scb) continue; // só os trechos coloridos
-            var a = Math.Max(s.Start, from);
-            var b = Math.Min(s.Start + s.Length, to);
-            if (b <= a) continue;
-            doc.GetRange(a, b).CharacterFormat.ForegroundColor = scb.Color;
-        }
-    }
-
     private static bool IsNewline(char c) => c is '\n' or '\r';
 
     /// <summary>
-    /// Núcleo do tokenizador: percorre o código uma vez e devolve os trechos em ordem,
-    /// cobrindo todo o texto (trechos sem cor ficam com <c>Brush == null</c>).
+    /// Tokenizer core: walks the code once and returns the spans in order, covering
+    /// the whole text (uncolored spans have <c>Brush == null</c>).
     /// </summary>
-    private static List<Span> Tokenize(string code, Lang lang, int stopAt = int.MaxValue)
+    private static List<Span> Tokenize(string code, Lang lang)
     {
         var spans = new List<Span>();
         var n = code.Length;
         var i = 0;
 
-        // Cada linguagem pode redefinir a cor de strings/variáveis (o PowerShell usa
-        // a paleta do console: variável verde, string azul).
+        // Each language can override the string/variable color (PowerShell uses the
+        // console palette: green variables, blue strings).
         var stringBrush = lang.StringColor ?? StringBrush;
         var variableBrush = lang.VariableColor ?? VariableBrush;
 
-        // Trecho "pendente" sem cor: acumulado como um intervalo contíguo [start, end)
-        // e descarregado antes de qualquer trecho colorido.
+        // "Pending" uncolored span: accumulated as a contiguous [start, end) range and
+        // flushed before any colored span.
         var pendStart = -1;
         var pendEnd = -1;
 
@@ -117,17 +97,15 @@ public static class CodeHighlighter
             spans.Add(new Span(start, len, brush));
         }
 
-        // Em "posição de comando" (início de cada linha) uma palavra simples que não
-        // se encaixa em nenhum outro critério é o nome do comando — fica amarela.
+        // At "command position" (start of each line) a plain word that doesn't match any
+        // other rule is the command name — colored yellow.
         var commandPos = true;
 
-        // Para no limite pedido (o último token pode ultrapassá-lo, e tudo bem: a faixa
-        // de aplicação é recortada por quem chama).
-        while (i < n && i < stopAt)
+        while (i < n)
         {
             var c = code[i];
 
-            // comentário de linha
+            // line comment
             var prefix = MatchLineComment(code, i, lang);
             if (prefix is not null)
             {
@@ -135,10 +113,10 @@ public static class CodeHighlighter
                 while (j < n && !IsNewline(code[j])) j++;
                 Emit(i, j - i, CommentBrush);
                 i = j;
-                continue; // a quebra de linha seguinte reabre a posição de comando
+                continue; // the next line break reopens command position
             }
 
-            // comentário de bloco
+            // block comment
             if (lang.BlockStart is not null && Matches(code, i, lang.BlockStart))
             {
                 var k = code.IndexOf(lang.BlockEnd!, i + lang.BlockStart.Length, StringComparison.Ordinal);
@@ -148,7 +126,7 @@ public static class CodeHighlighter
                 continue;
             }
 
-            // string (aspas simples/duplas; suporta aspas duplicadas como escape)
+            // string (single/double quotes; supports doubled quotes as an escape)
             if (Array.IndexOf(lang.StringDelims, c) >= 0)
             {
                 var j = i + 1;
@@ -160,7 +138,7 @@ public static class CodeHighlighter
                         j++;
                         break;
                     }
-                    if (IsNewline(code[j])) break; // string não atravessa linha (simplificação)
+                    if (IsNewline(code[j])) break; // string doesn't span lines (simplification)
                     j++;
                 }
                 var end = Math.Min(j, n);
@@ -170,14 +148,14 @@ public static class CodeHighlighter
                 continue;
             }
 
-            // PowerShell: a primeira palavra da linha (tudo até o primeiro espaço) é o
-            // nome do comando — colore inteira de amarelo, a menos que comece por uma
-            // palavra-chave (if, function…), que mantém o azul.
+            // PowerShell: the first word of the line (everything up to the first space) is
+            // the command name — colored entirely yellow, unless it starts with a keyword
+            // (if, function…), which stays blue.
             if (lang.CommandWords && commandPos && IsCommandStart(c))
             {
                 var j = i;
                 while (j < n && !char.IsWhiteSpace(code[j])) j++;
-                var token = code[i..j];
+                var token = code.Substring(i, j - i);
                 if (HasLetter(token) && !lang.Keywords.Contains(LeadingWord(token)))
                 {
                     Emit(i, j - i, FunctionBrush);
@@ -187,12 +165,12 @@ public static class CodeHighlighter
                 }
             }
 
-            // operadores de hífen do PowerShell (-eq, -match, -join…)
+            // PowerShell hyphen operators (-eq, -match, -join…)
             if (lang.DashOperators && c == '-' && i + 1 < n && char.IsLetter(code[i + 1]))
             {
                 var j = i + 1;
                 while (j < n && char.IsLetter(code[j])) j++;
-                if (lang.Operators.Contains(code[(i + 1)..j]))
+                if (lang.Operators.Contains(code.Substring(i + 1, j - i - 1)))
                 {
                     Emit(i, j - i, KeywordBrush);
                     commandPos = false;
@@ -201,12 +179,12 @@ public static class CodeHighlighter
                 }
             }
 
-            // parâmetros/opções: -quiet, --force, /silence (cinza). Só no começo de um
-            // token (precedido por espaço/início) para não pegar subtração nem caminhos.
+            // parameters/switches: -quiet, --force, /silence (gray). Only at the start of a
+            // token (preceded by whitespace/start) so it doesn't catch subtraction or paths.
             if (lang.Parameters && (c == '-' || c == '/') && (i == 0 || char.IsWhiteSpace(code[i - 1])))
             {
                 var j = i;
-                while (j < n && code[j] is '-' or '/') j++; // prefixo: -, --, /
+                while (j < n && code[j] is '-' or '/') j++; // prefix: -, --, /
                 if (j < n && char.IsLetter(code[j]))
                 {
                     while (j < n && (char.IsLetterOrDigit(code[j]) || code[j] is '_' or '-' or ':')) j++;
@@ -217,7 +195,7 @@ public static class CodeHighlighter
                 }
             }
 
-            // variáveis com prefixo ($var no PowerShell, @var no SQL)
+            // prefixed variables ($var in PowerShell, @var in SQL)
             if (lang.VariablePrefix != '\0' && c == lang.VariablePrefix)
             {
                 var j = i + 1;
@@ -231,13 +209,13 @@ public static class CodeHighlighter
                 }
             }
 
-            // variáveis do CMD: %VAR%, %1, !var!
+            // CMD variables: %VAR%, %1, !var!
             if (lang.PercentVariables && c is '%' or '!')
             {
                 var close = c;
                 var j = i + 1;
                 while (j < n && (char.IsLetterOrDigit(code[j]) || code[j] == '_')) j++;
-                if (j < n && code[j] == close) j++; // fecha %…% ou !…!
+                if (j < n && code[j] == close) j++; // closes %…% or !…!
                 if (j > i + 1)
                 {
                     Emit(i, j - i, VariableBrush);
@@ -247,12 +225,12 @@ public static class CodeHighlighter
                 }
             }
 
-            // palavra (identificador, palavra-chave, função ou cmdlet Verbo-Substantivo)
+            // word (identifier, keyword, function, or Verb-Noun cmdlet)
             if (char.IsLetter(c) || c == '_')
             {
                 var j = i;
                 while (j < n && (char.IsLetterOrDigit(code[j]) || code[j] == '_')) j++;
-                // nomes hifenizados: cmdlets do PowerShell (Get-ChildItem, Write-Host…)
+                // hyphenated names: PowerShell cmdlets (Get-ChildItem, Write-Host…)
                 if (lang.HyphenatedNames)
                 {
                     while (j + 1 < n && code[j] == '-' && (char.IsLetter(code[j + 1]) || code[j + 1] == '_'))
@@ -261,7 +239,7 @@ public static class CodeHighlighter
                         while (j < n && (char.IsLetterOrDigit(code[j]) || code[j] == '_')) j++;
                     }
                 }
-                // executáveis do CMD: nome terminando em .exe/.msc/.cpl fica verde
+                // CMD executables: a name ending in .exe/.msc/.cpl is colored green
                 var extLen = MatchGreenExtension(code, j, lang);
                 if (extLen > 0)
                 {
@@ -270,7 +248,7 @@ public static class CodeHighlighter
                     i = j + extLen;
                     continue;
                 }
-                var word = code[i..j];
+                var word = code.Substring(i, j - i);
                 var brush = ClassifyWord(word, lang);
                 if (brush is not null)
                     Emit(i, j - i, brush);
@@ -281,7 +259,7 @@ public static class CodeHighlighter
                 continue;
             }
 
-            // número
+            // number
             if (char.IsDigit(c))
             {
                 var j = i;
@@ -292,8 +270,8 @@ public static class CodeHighlighter
                 continue;
             }
 
-            // pontuação/espaços: nova linha reabre a posição de comando; espaços a
-            // preservam (recuo); qualquer outro caractere a encerra.
+            // punctuation/whitespace: a newline reopens command position; spaces preserve
+            // it (indentation); any other character ends it.
             if (IsNewline(c)) commandPos = true;
             else if (!char.IsWhiteSpace(c)) commandPos = false;
             Pend(i, i + 1);
@@ -304,7 +282,7 @@ public static class CodeHighlighter
         return spans;
     }
 
-    // Caracteres que podem iniciar o nome de um comando (bareword, caminho .\…).
+    // Characters that can start a command name (bareword, .\… path).
     private static bool IsCommandStart(char c) =>
         char.IsLetter(c) || c is '_' or '.' or '\\';
 
@@ -319,23 +297,23 @@ public static class CodeHighlighter
     {
         var k = 0;
         while (k < token.Length && (char.IsLetterOrDigit(token[k]) || token[k] == '_')) k++;
-        return token[..k];
+        return token.Substring(0, k);
     }
 
     private static Brush? ClassifyWord(string word, Lang lang)
     {
-        // cmdlet Verbo-Substantivo: colore como função quando o verbo é conhecido.
+        // Verb-Noun cmdlet: colored as a function when the verb is known.
         var dash = word.IndexOf('-');
         if (dash > 0)
-            return lang.Verbs.Contains(word[..dash]) ? FunctionBrush : null;
+            return lang.Verbs.Contains(word.Substring(0, dash)) ? FunctionBrush : null;
 
         if (lang.Keywords.Contains(word)) return KeywordBrush;
         if (lang.Functions.Contains(word)) return FunctionBrush;
         return null;
     }
 
-    // Casa uma extensão "verde" (.exe/.msc/.cpl) na posição informada, respeitando
-    // o limite de palavra (não casa "notepad.executar"). Devolve o tamanho ou 0.
+    // Matches a "green" extension (.exe/.msc/.cpl) at the given position, respecting
+    // the word boundary (won't match "notepad.executar"). Returns the length or 0.
     private static int MatchGreenExtension(string s, int pos, Lang lang)
     {
         if (lang.GreenExtensions.Length == 0 || pos >= s.Length || s[pos] != '.') return 0;
@@ -358,7 +336,7 @@ public static class CodeHighlighter
         foreach (var p in lang.LineComments)
         {
             if (!Matches(s, i, p)) continue;
-            // "REM"/"rem" só é comentário como palavra isolada (início de token).
+            // "REM"/"rem" is only a comment as a standalone word (start of a token).
             if (char.IsLetter(p[0]))
             {
                 var after = i + p.Length;
@@ -370,21 +348,21 @@ public static class CodeHighlighter
         return null;
     }
 
-    // ── definição das linguagens ───────────────────────────────────────────────
+    // ── language definitions ───────────────────────────────────────────────────
 
     private sealed class Lang
     {
-        public string[] LineComments = [];
+        public string[] LineComments = Array.Empty<string>();
         public string? BlockStart;
         public string? BlockEnd;
-        public char[] StringDelims = [];
+        public char[] StringDelims = Array.Empty<char>();
         public HashSet<string> Keywords = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Operators = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Functions = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> Verbs = new(StringComparer.OrdinalIgnoreCase);
-        public string[] GreenExtensions = [];
-        public Brush? StringColor;    // sobrescreve a cor padrão de strings
-        public Brush? VariableColor;  // sobrescreve a cor padrão de variáveis
+        public string[] GreenExtensions = Array.Empty<string>();
+        public Brush? StringColor;    // overrides the default string color
+        public Brush? VariableColor;  // overrides the default variable color
         public char VariablePrefix = '\0';
         public bool PercentVariables;
         public bool DashOperators;
@@ -406,11 +384,11 @@ public static class CodeHighlighter
 
     private static readonly Lang Cmd = new()
     {
-        LineComments = ["REM", "::"],
-        StringDelims = ['"'],
+        LineComments = new[] { "REM", "::" },
+        StringDelims = new[] { '"' },
         PercentVariables = true,
         Parameters = true,
-        GreenExtensions = [".exe", ".msc", ".cpl"],
+        GreenExtensions = new[] { ".exe", ".msc", ".cpl" },
         Keywords = new(StringComparer.OrdinalIgnoreCase)
         {
             "echo", "off", "on", "set", "setlocal", "endlocal", "if", "else", "for",
@@ -425,16 +403,16 @@ public static class CodeHighlighter
 
     private static readonly Lang PowerShell = new()
     {
-        LineComments = ["#"],
+        LineComments = new[] { "#" },
         BlockStart = "<#",
         BlockEnd = "#>",
-        StringDelims = ['"', '\''],
+        StringDelims = new[] { '"', '\'' },
         VariablePrefix = '$',
         DashOperators = true,
         HyphenatedNames = true,
         CommandWords = true,
         Parameters = true,
-        // Paleta do console do PowerShell (PSReadLine): variável verde, string azul.
+        // PowerShell console palette (PSReadLine): green variables, blue strings.
         VariableColor = Brush(0x6A, 0xC4, 0x6A),
         StringColor = Brush(0x4F, 0xB3, 0xD9),
         Keywords = new(StringComparer.OrdinalIgnoreCase)
@@ -452,7 +430,7 @@ public static class CodeHighlighter
             "notcontains", "in", "notin", "replace", "split", "join", "is", "isnot",
             "as", "f", "shl", "shr",
         },
-        // Verbos aprovados do PowerShell: qualquer "Verbo-Substantivo" vira cmdlet.
+        // Approved PowerShell verbs: any "Verb-Noun" becomes a cmdlet.
         Verbs = new(StringComparer.OrdinalIgnoreCase)
         {
             "Get", "Set", "New", "Remove", "Add", "Clear", "Copy", "Move", "Rename",
@@ -469,10 +447,10 @@ public static class CodeHighlighter
 
     private static readonly Lang Sql = new()
     {
-        LineComments = ["--"],
+        LineComments = new[] { "--" },
         BlockStart = "/*",
         BlockEnd = "*/",
-        StringDelims = ['\''],
+        StringDelims = new[] { '\'' },
         VariablePrefix = '@',
         Keywords = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -495,8 +473,8 @@ public static class CodeHighlighter
 
     private static readonly Lang Vbs = new()
     {
-        LineComments = ["'", "REM"],
-        StringDelims = ['"'],
+        LineComments = new[] { "'", "REM" },
+        StringDelims = new[] { '"' },
         Keywords = new(StringComparer.OrdinalIgnoreCase)
         {
             "dim", "redim", "preserve", "set", "const", "public", "private", "function",
@@ -507,7 +485,7 @@ public static class CodeHighlighter
             "xor", "eqv", "imp", "mod", "is", "byval", "byref", "class", "property",
             "get", "let", "default", "stop", "randomize", "erase",
         },
-        // Funções e objetos nativos do VBScript / WSH.
+        // Native VBScript / WSH functions and objects.
         Functions = new(StringComparer.OrdinalIgnoreCase)
         {
             "MsgBox", "InputBox", "CreateObject", "GetObject", "Array", "IsArray",
