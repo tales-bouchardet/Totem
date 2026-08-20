@@ -10,7 +10,7 @@ namespace totem;
 public static class ImageClipboard
 {
     private static readonly string TempFolder =
-        Path.Combine(Path.GetTempPath(), "aec.totem", "clip");
+        Path.Combine(Path.GetTempPath(), "totem", "clip");
 
     // File still referenced by a previous "copy as file" (kept alive until the next one).
     private static string? _activeFile;

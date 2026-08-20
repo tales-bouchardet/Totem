@@ -11,7 +11,7 @@ public static class Log
 {
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "aec.totem", "error.log");
+        "totem", "error.log");
 
     public static void Error(string context, Exception ex)
     {

@@ -59,6 +59,7 @@ public static class CodeLanguages
             "SELECT *\nFROM tabela\nWHERE 1 = 1;"),
         new("vbs", "VBScript",
             "Option Explicit\n\n"),
+        new("password", "Senha", ""),
     };
 
     public static CodeLanguage? ById(string? id) =>

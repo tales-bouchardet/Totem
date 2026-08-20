@@ -33,6 +33,8 @@ public partial class ItemControl : UserControl
 
     private readonly DispatcherTimer _copiedTimer = new() { Interval = TimeSpan.FromMilliseconds(1100) };
     private bool _editing;
+
+    internal static ItemControl? Editing { get; private set; }
     private bool _updatingContentBox; // guards ContentBox_TextChanged during programmatic rebuilds
     private string? _pendingCopyText;
 
@@ -59,6 +61,8 @@ public partial class ItemControl : UserControl
         _copiedTimer.Tick += (_, _) => { _copiedTimer.Stop(); CopiedText.Visibility = Visibility.Collapsed; };
         InputBox.PreviewKeyDown += InputBox_PreviewKeyDown_Paste;
         ContentBox.PreviewKeyDown += InputBox_PreviewKeyDown_Paste;
+        ContentBox.PreviewMouseWheel += Content_PreviewMouseWheel;
+        CodeReadView.PreviewMouseWheel += Content_PreviewMouseWheel;
 
         // The gutter has no scrollbar of its own; it just follows whichever
         // content view (edit box or colored reader) is currently scrolling.
@@ -156,6 +160,7 @@ public partial class ItemControl : UserControl
     {
         if (_editing) return;
         _editing = true;
+        Editing = this;
 
         if (Model.IsCode)
         {
@@ -178,6 +183,7 @@ public partial class ItemControl : UserControl
     {
         if (!_editing) return;
         _editing = false;
+        if (ReferenceEquals(Editing, this)) Editing = null;
 
         if (Model.IsCode)
         {
@@ -197,14 +203,42 @@ public partial class ItemControl : UserControl
     private void InputBox_LostFocus(object sender, RoutedEventArgs e) => ExitInputEdit();
     private void ContentBox_LostFocus(object sender, RoutedEventArgs e) => ExitInputEdit();
 
-    private void Content_ScrollChanged(object sender, ScrollChangedEventArgs e) =>
+    private void Content_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (_editing) return;
+
+        e.Handled = true;
+        if (VisualTreeHelper.GetParent((DependencyObject)sender) is not UIElement parent) return;
+
+        parent.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+        {
+            RoutedEvent = MouseWheelEvent,
+            Source = sender,
+        });
+    }
+
+    private void Content_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
         GutterScrollViewer.ScrollToVerticalOffset(e.VerticalOffset);
+        if (ReferenceEquals(sender, InputBox)) SyncCodeScroll();
+    }
+
+    private void SyncCodeScroll()
+    {
+        if (!_editing || !Model.IsCode) return;
+        CodeReadView.ScrollToVerticalOffset(InputBox.VerticalOffset);
+        CodeReadView.ScrollToHorizontalOffset(InputBox.HorizontalOffset);
+    }
 
     private void InputBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         Model.Content = InputBox.Text;
         UpdateEmptyPlaceholder();
-        if (Model.IsCode) UpdateGutter();
+        if (Model.IsCode)
+        {
+            UpdateGutter();
+            RenderCode();
+        }
         Changed?.Invoke();
     }
 
@@ -259,17 +293,35 @@ public partial class ItemControl : UserControl
         ImageBorder.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
         TextAreaBorder.Visibility = showImage ? Visibility.Collapsed : Visibility.Visible;
         InputBox.Visibility = showCodeEdit ? Visibility.Visible : Visibility.Collapsed;
-        CodeReadView.Visibility = showCodeRead ? Visibility.Visible : Visibility.Collapsed;
+        CodeReadView.Visibility = (showCodeRead || showCodeEdit) ? Visibility.Visible : Visibility.Collapsed;
+        CodeReadView.IsHitTestVisible = !showCodeEdit;
+        if (showCodeEdit) InputBox.Foreground = Brushes.Transparent;
+        else InputBox.ClearValue(ForegroundProperty);
         ContentBox.Visibility = (showContentEdit || showContentRead) ? Visibility.Visible : Visibility.Collapsed;
         UpdateEmptyPlaceholder();
 
+        ContentBox.Focusable = _editing;
+        ContentBox.HorizontalScrollBarVisibility =
+            _editing ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        ContentBox.VerticalScrollBarVisibility =
+            _editing ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+        CodeReadView.Focusable = false;
+        CodeReadView.HorizontalScrollBarVisibility =
+            showCodeEdit ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+        CodeReadView.VerticalScrollBarVisibility =
+            showCodeEdit ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
+
         CodeBadge.Visibility = Model.IsCode ? Visibility.Visible : Visibility.Collapsed;
-        CodeGutter.Visibility = Model.IsCode ? Visibility.Visible : Visibility.Collapsed;
+        GutterScrollViewer.Visibility = Model.IsCode && !IsPassword ? Visibility.Visible : Visibility.Collapsed;
         TextAreaBorder.Background = Model.IsCode
             ? (Brush)Resources["CodeBg"]
             : (Model.IsPlainText && !_editing ? (Brush)Resources["PlainTextBg"] : (Brush)Resources["InputBg"]);
 
-        if (showCodeRead) RenderCode();
+        TextAreaBorder.BorderBrush = _editing
+            ? (Brush)Resources["AccentBrush"]
+            : (Brush)Resources["BorderBrush2"];
+
+        if (showCodeRead || showCodeEdit) RenderCode();
         if (showContentRead) RenderContent();
         UpdateGutter();
     }

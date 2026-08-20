@@ -15,7 +15,7 @@
             Text="Clique aqui com o botão direito para adicionar um novo input"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
-            FontSize="14"
+            FontSize="13.125"
             Opacity="0.6"
             IsHitTestVisible="False" />
 

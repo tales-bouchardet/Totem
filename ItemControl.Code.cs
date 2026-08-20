@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -45,11 +46,49 @@ public partial class ItemControl
     // always uses the code font — nothing left here to toggle per mode.
     private void ApplyCodeState() => UpdateInputView();
 
+    private const string PasswordLanguageId = "password";
+
+    private bool IsPassword => Model.Language == PasswordLanguageId;
+
+    private static string Mask(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        foreach (var c in text)
+            sb.Append(char.IsControl(c) ? c : '*');
+        return sb.ToString();
+    }
+
     private void RenderCode()
     {
         UpdateCodeBadge();
-        var paragraph = CodeHighlighter.BuildParagraph(InputBox.Text, Model.Language);
-        CodeReadView.Document = new FlowDocument(paragraph) { PagePadding = new Thickness(0) };
+        var code = IsPassword && !_editing ? Mask(InputBox.Text) : InputBox.Text;
+        var paragraph = IsPassword
+            ? new Paragraph(new Run(code)) { Margin = new Thickness(0) }
+            : CodeHighlighter.BuildParagraph(code, Model.Language);
+        CodeReadView.Document = new FlowDocument(paragraph)
+        {
+            PagePadding = new Thickness(0),
+            PageWidth = MeasureWidestLine(code),
+        };
+        SyncCodeScroll();
+    }
+
+    private double MeasureWidestLine(string code)
+    {
+        var typeface = new Typeface(
+            CodeReadView.FontFamily, CodeReadView.FontStyle, CodeReadView.FontWeight, CodeReadView.FontStretch);
+        var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+        var widest = 0.0;
+        foreach (var line in code.Split('\n'))
+        {
+            var text = new FormattedText(
+                line.TrimEnd('\r'), CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                typeface, CodeReadView.FontSize, Brushes.Black, pixelsPerDip);
+            widest = Math.Max(widest, text.WidthIncludingTrailingWhitespace);
+        }
+
+        return widest + 14;
     }
 
     private void UpdateCodeBadge() =>
@@ -196,6 +235,7 @@ public partial class ItemControl
     private void SetCodePowerShell_Click(object sender, RoutedEventArgs e) => SetCode(CodeLanguages.ById("powershell")!);
     private void SetCodeSql_Click(object sender, RoutedEventArgs e) => SetCode(CodeLanguages.ById("sql")!);
     private void SetCodeVbs_Click(object sender, RoutedEventArgs e) => SetCode(CodeLanguages.ById("vbs")!);
+    private void SetCodePassword_Click(object sender, RoutedEventArgs e) => SetCode(CodeLanguages.ById(PasswordLanguageId)!);
     private void SetPlainText_Click(object sender, RoutedEventArgs e) => SetPlainText();
     private void SetPlain_Click(object sender, RoutedEventArgs e) => SetPlain();
 }

@@ -9,6 +9,18 @@
                 <ui:ThemesDictionary Theme="Dark" />
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
+
+            <Style x:Key="DefaultControlFocusVisualStyle" TargetType="Control" />
+            <Style x:Key="FocusVisualStyle" TargetType="Control" />
+
+            <Style TargetType="ContextMenu" BasedOn="{StaticResource UiContextMenu}">
+                <Setter Property="FontFamily" Value="./font/#Open Sans" />
+                <Setter Property="FontSize" Value="12" />
+            </Style>
+            <Style TargetType="MenuItem" BasedOn="{StaticResource UiMenuItem}">
+                <Setter Property="FontFamily" Value="./font/#Open Sans" />
+                <Setter Property="FontSize" Value="12" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

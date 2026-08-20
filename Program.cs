@@ -14,7 +14,7 @@ public static class Program
         // Only one Totem window at a time: two instances writing to the same
         // autosave cache file would race and could overwrite each other's data.
         // Held for the app's whole lifetime (App.Run blocks until exit).
-        using var singleInstance = new Mutex(true, "aec.totem.SingleInstance", out var createdNew);
+        using var singleInstance = new Mutex(true, "totem.SingleInstance", out var createdNew);
         if (!createdNew)
         {
             MessageBox(IntPtr.Zero, "O Totem já está em execução.", "Totem", 0x40 /* MB_ICONINFORMATION */);

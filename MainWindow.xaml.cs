@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -22,7 +23,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Local auto-saved cache, protected by DPAPI (only this Windows user can read it).
     private static readonly string CachePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "aec.totem", "cache.bin");
+        "totem", "cache.bin");
 
     private DispatcherTimer? _saveDebounce;
     private bool _loaded;
@@ -46,6 +47,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         DotNetText.Text = ".NET Framework 4.6.2";
 
         App.DialogHost = RootContentDialogHost;
+
+        AddHandler(DragDrop.QueryContinueDragEvent, new QueryContinueDragEventHandler((_, e) =>
+        {
+            if (ItemControl.Editing is null && e.OriginalSource is TabItem) return;
+            e.Action = DragAction.Cancel;
+            e.Handled = true;
+        }), true);
 
         Closing += (_, _) =>
         {
@@ -71,12 +79,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             Content = "+",
             FontSize = 16,
-            Width = 32,
-            Height = 32,
-            Margin = new Thickness(4),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+            Padding = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Margin = new Thickness(4, 0, 4, 2),
+            Background = new SolidColorBrush(Color.FromRgb(0x13, 0x13, 0x13)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x7A, 0x7A)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x12, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
         };
+        button.SetBinding(FrameworkElement.WidthProperty,
+            new Binding(nameof(FrameworkElement.ActualHeight)) { Source = button });
+
         button.Click += (_, _) =>
             AddTab(new TotemTab { Name = $"Aba {Tabs.Items.Count}", Items = [new TotemItem { Label = "" }] });
 
@@ -153,13 +166,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void TabItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (Keyboard.Modifiers != ModifierKeys.Shift)
+        {
+            _tabDragSource = null;
+            return;
+        }
+
         _tabDragStart = e.GetPosition(null);
         _tabDragSource = sender as TabItem;
     }
 
     private void TabItem_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (_tabDragSource is null || e.LeftButton != MouseButtonState.Pressed) return;
+        if (_tabDragSource is null || e.LeftButton != MouseButtonState.Pressed ||
+            Keyboard.Modifiers != ModifierKeys.Shift) return;
         var pos = e.GetPosition(null);
         if (Math.Abs(pos.X - _tabDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(pos.Y - _tabDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
@@ -358,9 +378,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 10),
         });
-        panel.Children.Add(new TextBlock { Text = "Senha", FontSize = 12, Margin = new Thickness(0, 0, 0, 2) });
+        panel.Children.Add(new TextBlock { Text = "Senha", FontSize = 11.25, Margin = new Thickness(0, 0, 0, 2) });
         panel.Children.Add(pwd);
-        panel.Children.Add(new TextBlock { Text = "Confirmar senha", FontSize = 12, Margin = new Thickness(0, 8, 0, 2) });
+        panel.Children.Add(new TextBlock { Text = "Confirmar senha", FontSize = 11.25, Margin = new Thickness(0, 8, 0, 2) });
         panel.Children.Add(confirm);
 
         var dialog = new Wpf.Ui.Controls.ContentDialog(RootContentDialogHost)

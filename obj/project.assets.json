@@ -1,7 +1,7 @@
 {
-  "version": 3,
+  "version": 4,
   "targets": {
-    ".NETFramework,Version=v4.6.2": {
+    "net462": {
       "Microsoft.Bcl.AsyncInterfaces/8.0.0": {
         "type": "package",
         "dependencies": {
@@ -234,7 +234,7 @@
         }
       }
     },
-    ".NETFramework,Version=v4.6.2/win7-x86": {
+    "net462/win-x86": {
       "Microsoft.Bcl.AsyncInterfaces/8.0.0": {
         "type": "package",
         "dependencies": {
@@ -1180,7 +1180,7 @@
     }
   },
   "projectFileDependencyGroups": {
-    ".NETFramework,Version=v4.6.2": [
+    "net462": [
       "Microsoft.NETFramework.ReferenceAssemblies >= 1.0.3",
       "Portable.BouncyCastle >= 1.9.0",
       "System.Text.Json >= 8.0.5",
@@ -1188,28 +1188,37 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Administrador\\.nuget\\packages\\": {}
+    "C:\\Users\\Danthe\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Administrador\\Documents\\GitHub\\Totem\\aec.totem.csproj",
+      "projectUniqueName": "D:\\Github\\Totem\\totem.csproj",
       "projectName": "totem",
-      "projectPath": "C:\\Users\\Administrador\\Documents\\GitHub\\Totem\\aec.totem.csproj",
-      "packagesPath": "C:\\Users\\Administrador\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Administrador\\Documents\\GitHub\\Totem\\obj\\",
+      "projectPath": "D:\\Github\\Totem\\totem.csproj",
+      "packagesPath": "C:\\Users\\Danthe\\.nuget\\packages\\",
+      "outputPath": "D:\\Github\\Totem\\obj\\",
       "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
       "configFilePaths": [
-        "C:\\Users\\Administrador\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\Danthe\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "net462"
       ],
       "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net462": {
+          "framework": "net462",
           "targetAlias": "net462",
           "projectReferences": {}
         }
@@ -1223,10 +1232,12 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      }
+      },
+      "SdkAnalysisLevel": "10.0.300"
     },
     "frameworks": {
       "net462": {
+        "framework": "net462",
         "targetAlias": "net462",
         "dependencies": {
           "Microsoft.NETFramework.ReferenceAssemblies": {
@@ -1248,11 +1259,11 @@
             "version": "[4.3.0, )"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.424\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.301\\RuntimeIdentifierGraph.json"
       }
     },
     "runtimes": {
-      "win7-x86": {
+      "win-x86": {
         "#import": []
       }
     }
