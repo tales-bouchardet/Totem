@@ -1,16 +1,12 @@
 namespace totem;
 
-// ── Serializable data model (becomes JSON before being encrypted in the .ttm) ──
-
 public sealed class TotemDocument
 {
-    // Format version. Increment when the structure changes incompatibly;
-    // loading rejects documents with a version higher than this one (created by a newer app).
     public const int CurrentVersion = 1;
 
     public int Version { get; set; } = CurrentVersion;
     public List<TotemTab> Tabs { get; set; } = new();
-    public int SelectedTab { get; set; } // index of the active tab
+    public int SelectedTab { get; set; }
 }
 
 public sealed class TotemTab
@@ -28,10 +24,8 @@ public sealed class TotemItem
     public bool IsPlainText { get; set; } = true;
     public bool IsSeparator { get; set; }
     public bool IsImage { get; set; }
-    public string? ImageData { get; set; } // Base64 image data
+    public string? ImageData { get; set; }
 }
-
-// ── Languages available for "code block" mode ───────────────────────────────
 
 public sealed class CodeLanguage
 {

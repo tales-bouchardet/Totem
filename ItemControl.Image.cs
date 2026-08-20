@@ -7,7 +7,6 @@ using Microsoft.Win32;
 
 namespace totem;
 
-// ── image block: paste/pick/copy ──────────────────────────────────────────────
 public partial class ItemControl
 {
     internal void InputBox_PreviewKeyDown_Paste(object sender, KeyEventArgs e)
@@ -33,7 +32,7 @@ public partial class ItemControl
             UpdateImageSource();
             Changed?.Invoke();
         }
-        catch { /* invalid clipboard content — ignore */ }
+        catch { }
     }
 
     private void UpdateImageSource()
@@ -51,7 +50,7 @@ public partial class ItemControl
             bmp.Freeze();
             ImageControl.Source = bmp;
         }
-        catch { /* invalid image — ignore */ }
+        catch { }
         UpdateInputView();
     }
 

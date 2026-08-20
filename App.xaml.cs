@@ -15,7 +15,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        ImageClipboard.PurgeLeftovers(); // remove leftovers from previous sessions
+        ImageClipboard.PurgeLeftovers();
         MainWindow = new MainWindow();
         MainWindow.Show();
     }

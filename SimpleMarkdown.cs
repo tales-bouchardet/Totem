@@ -3,20 +3,8 @@ using System.Windows.Documents;
 
 namespace totem;
 
-/// <summary>
-/// Minimal inline formatter (bold, italic, strikethrough, line breaks) for the
-/// item content area. Builds a <see cref="Paragraph"/> directly out of WPF
-/// <see cref="Inline"/> elements so the read-only view is made of the exact same
-/// building blocks as the editable view (both are a RichTextBox/FlowDocument) —
-/// no separate third-party renderer with its own line-height rules to fight.
-/// </summary>
 public static class SimpleMarkdown
 {
-    /// <summary>
-    /// Builds a paragraph from <paramref name="text"/>. When
-    /// <paramref name="applyFormatting"/> is false, the text is shown verbatim
-    /// (used for "Texto puro" and for editing, where raw markup should stay raw).
-    /// </summary>
     public static Paragraph BuildParagraph(string text, bool applyFormatting)
     {
         var para = new Paragraph { Margin = new Thickness(0) };
@@ -68,7 +56,7 @@ public static class SimpleMarkdown
 
             var j = i;
             while (j < n && text[j] != '\n' && !IsMarkerStart(text, j)) j++;
-            if (j == i) j++; // a lone unmatched marker: emit it literally, don't loop forever
+            if (j == i) j++;
             para.Inlines.Add(new Run(text.Substring(i, j - i)));
             i = j;
         }

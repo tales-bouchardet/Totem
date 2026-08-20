@@ -5,10 +5,10 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace totem;
 
-// ── code block: language switching, colored reader, indent ───────────────────
 public partial class ItemControl
 {
     private void SetCode(CodeLanguage lang)
@@ -16,8 +16,7 @@ public partial class ItemControl
         Model.IsCode = true;
         Model.IsPlainText = false;
         Model.Language = lang.Id;
-        // InputBox is only the live buffer while actively editing code; re-sync it from
-        // the model (which may just have been edited as plain text) before switching over.
+
         InputBox.Text = string.IsNullOrWhiteSpace(Model.Content) ? lang.Skeleton : Model.Content;
         Model.Content = InputBox.Text;
         ApplyCodeState();
@@ -42,11 +41,13 @@ public partial class ItemControl
         Changed?.Invoke();
     }
 
-    // InputBox is code-only now (ContentBox handles plain text/Markdown), so it
-    // always uses the code font — nothing left here to toggle per mode.
     private void ApplyCodeState() => UpdateInputView();
 
     private const string PasswordLanguageId = "password";
+
+    private const int LiveHighlightLimit = 2000;
+
+    private DispatcherTimer? _highlightDebounce;
 
     private bool IsPassword => Model.Language == PasswordLanguageId;
 
@@ -56,6 +57,45 @@ public partial class ItemControl
         foreach (var c in text)
             sb.Append(char.IsControl(c) ? c : '*');
         return sb.ToString();
+    }
+
+    internal void RefreshHighlight()
+    {
+        if (InputBox.Text.Length <= LiveHighlightLimit)
+        {
+            _highlightDebounce?.Stop();
+            ShowHighlightLayer(true);
+            return;
+        }
+
+        ShowHighlightLayer(false);
+        _highlightDebounce ??= CreateHighlightDebounce();
+        _highlightDebounce.Stop();
+        _highlightDebounce.Start();
+    }
+
+    internal void StopHighlightDebounce() => _highlightDebounce?.Stop();
+
+    private DispatcherTimer CreateHighlightDebounce()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        timer.Tick += (_, _) => { timer.Stop(); ShowHighlightLayer(true); };
+        return timer;
+    }
+
+    private void ShowHighlightLayer(bool coloured)
+    {
+        CodeReadView.Visibility = coloured ? Visibility.Visible : Visibility.Collapsed;
+
+        if (coloured)
+        {
+            RenderCode();
+            InputBox.Foreground = Brushes.Transparent;
+        }
+        else
+        {
+            InputBox.ClearValue(ForegroundProperty);
+        }
     }
 
     private void RenderCode()
@@ -119,8 +159,6 @@ public partial class ItemControl
         }
         return sb.ToString();
     }
-
-    // ── Tab / Shift+Tab indent, Enter auto-indent ───────────────────────────
 
     private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -228,8 +266,6 @@ public partial class ItemControl
         while (i < s.Length && s[i] != '\n' && s[i] != '\r') i++;
         return i;
     }
-
-    // ── "Bloco de código" submenu handlers ──────────────────────────────────
 
     private void SetCodeCmd_Click(object sender, RoutedEventArgs e) => SetCode(CodeLanguages.ById("cmd")!);
     private void SetCodePowerShell_Click(object sender, RoutedEventArgs e) => SetCode(CodeLanguages.ById("powershell")!);

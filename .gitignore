@@ -1,0 +1,9 @@
+# Saída de build
+bin/
+obj/
+publish/
+
+# Ferramentas locais
+.claude/
+.vs/
+*.user

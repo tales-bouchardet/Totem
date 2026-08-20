@@ -8,34 +8,17 @@ using System.Windows.Threading;
 
 namespace totem;
 
-/// <summary>
-/// A label + input pair. The content is edited as plain text, but displayed
-/// rendered as Markdown while not being edited. When clicked, it copies the
-/// source text to the clipboard. The label is always visible as a pill (with
-/// a "label" placeholder when empty) and editable via a dialog.
-///
-/// Split into partial files by area:
-///   ItemControl.xaml.cs  — core: construction, view-state, copy, label editing.
-///   ItemControl.Code.cs  — code block: language switching, gutter, indent.
-///   ItemControl.Image.cs — image block: paste/pick/copy.
-/// </summary>
 public partial class ItemControl : UserControl
 {
-    // Indent width (Tab) in spaces — used by ItemControl.Code.cs.
     internal const int IndentWidth = 4;
 
-    internal const double PlainFontSize = 16;
-    internal const double CodeFontSize = 14;
-
-    // Matches the MinWidth set on the UserControl root in ItemControl.xaml;
-    // MainWindow uses it to size the window's own minimum width.
     public const double MinInputWidth = 500;
 
     private readonly DispatcherTimer _copiedTimer = new() { Interval = TimeSpan.FromMilliseconds(1100) };
     private bool _editing;
 
     internal static ItemControl? Editing { get; private set; }
-    private bool _updatingContentBox; // guards ContentBox_TextChanged during programmatic rebuilds
+    private bool _updatingContentBox;
     private string? _pendingCopyText;
 
     public TotemItem Model { get; }
@@ -64,31 +47,23 @@ public partial class ItemControl : UserControl
         ContentBox.PreviewMouseWheel += Content_PreviewMouseWheel;
         CodeReadView.PreviewMouseWheel += Content_PreviewMouseWheel;
 
-        // The gutter has no scrollbar of its own; it just follows whichever
-        // content view (edit box or colored reader) is currently scrolling.
         InputBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Content_ScrollChanged));
         CodeReadView.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(Content_ScrollChanged));
 
-        // InputBox is the live buffer only while actively editing code, but it's
-        // kept populated from the model at all times so a freshly loaded code
-        // item renders correctly (RenderCode reads from InputBox.Text).
         InputBox.Text = model.Content;
 
         if (model.IsImage && model.ImageData is not null)
             UpdateImageSource();
 
         UpdateLabelDisplay();
-        ApplyCodeState(); // triggers UpdateInputView(), which populates ContentBox/CodeReadView
+        ApplyCodeState();
     }
 
-    /// <summary>Makes sure the model reflects whatever is currently being edited.</summary>
     public void Sync()
     {
         if (Model.IsSeparator || !_editing) return;
         Model.Content = Model.IsCode ? InputBox.Text : GetContentBoxText();
     }
-
-    // ── copy ──────────────────────────────────────────────────────────────────
 
     private void Content_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
@@ -99,7 +74,7 @@ public partial class ItemControl : UserControl
             RichTextBox rtb => !rtb.Selection.IsEmpty,
             _ => false,
         };
-        if (hasSelection) return; // respect a manual selection instead of copying everything
+        if (hasSelection) return;
 
         Clipboard.SetText(Model.Content);
         ShowCopiedFeedback();
@@ -123,14 +98,11 @@ public partial class ItemControl : UserControl
         CopyFlash.BeginAnimation(OpacityProperty, anim);
     }
 
-    // ── context menu "Copiar" (selection-aware) ─────────────────────────────
-
     private void ContentContextMenu_Opened(object sender, RoutedEventArgs e)
     {
         var menu = (ContextMenu)sender;
         var target = menu.PlacementTarget;
-        // Right-click is used constantly, so a bad .Selection read must never take the
-        // whole app down with it — worst case the "Copiar" item just doesn't show up.
+
         try
         {
             _pendingCopyText = string.IsNullOrEmpty(Model.Content) ? null : target switch
@@ -142,8 +114,7 @@ public partial class ItemControl : UserControl
         }
         catch { _pendingCopyText = null; }
         var visible = !string.IsNullOrEmpty(_pendingCopyText) ? Visibility.Visible : Visibility.Collapsed;
-        // "Copiar" and its separator are always the first two items (see ItemControl.xaml);
-        // elements declared inside UserControl.Resources don't get x:Name fields.
+
         ((MenuItem)menu.Items[0]).Visibility = visible;
         ((Separator)menu.Items[1]).Visibility = visible;
     }
@@ -153,8 +124,6 @@ public partial class ItemControl : UserControl
         if (!string.IsNullOrEmpty(_pendingCopyText))
             Clipboard.SetText(_pendingCopyText);
     }
-
-    // ── editing ──────────────────────────────────────────────────────────────
 
     private void EnterInputEdit()
     {
@@ -171,7 +140,7 @@ public partial class ItemControl : UserControl
         }
         else
         {
-            SetContentBoxDocument(Model.Content, applyFormatting: false); // raw text while editing
+            SetContentBoxDocument(Model.Content, applyFormatting: false);
             ContentBox.IsReadOnly = false;
             UpdateInputView();
             ContentBox.Focus();
@@ -237,7 +206,7 @@ public partial class ItemControl : UserControl
         if (Model.IsCode)
         {
             UpdateGutter();
-            RenderCode();
+            RefreshHighlight();
         }
         Changed?.Invoke();
     }
@@ -250,17 +219,14 @@ public partial class ItemControl : UserControl
         Changed?.Invoke();
     }
 
-    /// <summary>Plain text out of ContentBox's FlowDocument (mirrors InputBox.Text for code).</summary>
     private string GetContentBoxText()
     {
         var text = new TextRange(ContentBox.Document.ContentStart, ContentBox.Document.ContentEnd).Text;
-        // TextRange.Text always ends with a trailing "\r\n" for the document's implicit
-        // final paragraph mark — strip it so it doesn't accumulate on every edit cycle.
+
         if (text.EndsWith("\r\n")) text = text.Substring(0, text.Length - 2);
         return text;
     }
 
-    /// <summary>Replaces ContentBox's whole document with a single formatted/plain paragraph.</summary>
     private void SetContentBoxDocument(string text, bool applyFormatting)
     {
         _updatingContentBox = true;
@@ -269,19 +235,12 @@ public partial class ItemControl : UserControl
         _updatingContentBox = false;
     }
 
-    /// <summary>Rebuilds ContentBox for read mode: Markdown-formatted, or verbatim for "Texto puro".</summary>
     private void RenderContent() => SetContentBoxDocument(Model.Content, applyFormatting: !Model.IsPlainText);
 
     private void UpdateEmptyPlaceholder() =>
         InputPlaceholder.Visibility = string.IsNullOrEmpty(Model.Content) && !_editing
             ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>
-    /// Decides which representation is visible: the code editor/reader (InputBox /
-    /// CodeReadView) when Model.IsCode, or the shared content box (ContentBox) for
-    /// plain text and Markdown — same control for both editing and reading, just
-    /// toggling IsReadOnly and rebuilding its document. Image mode wins over all.
-    /// </summary>
     private void UpdateInputView()
     {
         var showImage = Model.IsImage;
@@ -295,8 +254,11 @@ public partial class ItemControl : UserControl
         InputBox.Visibility = showCodeEdit ? Visibility.Visible : Visibility.Collapsed;
         CodeReadView.Visibility = (showCodeRead || showCodeEdit) ? Visibility.Visible : Visibility.Collapsed;
         CodeReadView.IsHitTestVisible = !showCodeEdit;
-        if (showCodeEdit) InputBox.Foreground = Brushes.Transparent;
-        else InputBox.ClearValue(ForegroundProperty);
+        if (!showCodeEdit)
+        {
+            StopHighlightDebounce();
+            InputBox.ClearValue(ForegroundProperty);
+        }
         ContentBox.Visibility = (showContentEdit || showContentRead) ? Visibility.Visible : Visibility.Collapsed;
         UpdateEmptyPlaceholder();
 
@@ -321,12 +283,11 @@ public partial class ItemControl : UserControl
             ? (Brush)Resources["AccentBrush"]
             : (Brush)Resources["BorderBrush2"];
 
-        if (showCodeRead || showCodeEdit) RenderCode();
+        if (showCodeEdit) RefreshHighlight();
+        else if (showCodeRead) RenderCode();
         if (showContentRead) RenderContent();
         UpdateGutter();
     }
-
-    // ── label ────────────────────────────────────────────────────────────────
 
     private async void EnterLabelEdit()
     {
@@ -370,8 +331,6 @@ public partial class ItemControl : UserControl
             LabelText.Foreground = (Brush)Resources["PillTextBrush"];
         }
     }
-
-    // ── shared menu handlers ─────────────────────────────────────────────────
 
     private void InsertAbove_Click(object sender, RoutedEventArgs e) => InsertAboveRequested?.Invoke(this);
     private void InsertBelow_Click(object sender, RoutedEventArgs e) => InsertBelowRequested?.Invoke(this);

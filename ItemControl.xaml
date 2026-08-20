@@ -20,10 +20,6 @@
         <FontFamily x:Key="CodeFont">./font/#DM Mono</FontFamily>
         <FontFamily x:Key="AppFont">./font/#Open Sans</FontFamily>
 
-        <!-- WPF-UI's themed TextBox/RichTextBox templates carry their own inner
-             padding and a "content box" background/focus chrome, independent of the
-             Padding property. Since the block's own Border already provides all the
-             chrome we want, these bare templates strip it down to just the text. -->
         <Style x:Key="PlainTextBoxStyle" TargetType="TextBox">
             <Setter Property="Foreground" Value="{StaticResource PillTextBrush}" />
             <Setter Property="CaretBrush" Value="{StaticResource PillTextBrush}" />
@@ -107,7 +103,6 @@
     </UserControl.Resources>
 
     <Grid>
-        <!-- separator visual: the only thing shown when Model.IsSeparator -->
         <Border
             x:Name="SeparatorVisual"
             Height="1"
@@ -122,7 +117,6 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- label: always-visible pill (placeholder when empty) -->
             <Border
                 x:Name="LabelPill"
                 Grid.Row="0"
@@ -146,10 +140,8 @@
                     Margin="13,3,13,3" />
             </Border>
 
-            <!-- content: text/code editor, code reader, markdown reader, image — one visible at a time -->
             <Grid Grid.Row="1">
 
-                <!-- text-family area: plain text / markdown source / code (edit and read) -->
                 <Border
                     x:Name="TextAreaBorder"
                     Background="{StaticResource InputBg}"
@@ -236,10 +228,6 @@
                                     PreviewMouseLeftButtonUp="Content_PreviewMouseLeftButtonUp"
                                     Visibility="Collapsed" />
 
-                                <!-- Plain text / Markdown: ONE RichTextBox for both editing and
-                                     reading, just toggling IsReadOnly and rebuilding its document —
-                                     not a TextBox for editing plus a separate renderer for reading,
-                                     which could never quite agree on line height/padding. -->
                                 <RichTextBox
                                     x:Name="ContentBox"
                                     AllowDrop="False"
@@ -261,9 +249,6 @@
                                     TextChanged="ContentBox_TextChanged"
                                     Visibility="Collapsed">
                                     <RichTextBox.Resources>
-                                        <!-- Enter creates a new Paragraph, not a LineBreak; without
-                                             this every typed line would get the theme's default
-                                             paragraph spacing between it and the next. -->
                                         <Style TargetType="Paragraph">
                                             <Setter Property="Margin" Value="0" />
                                         </Style>
@@ -274,7 +259,6 @@
                     </Grid>
                 </Border>
 
-                <!-- empty-state placeholder: overlays whichever border is showing -->
                 <TextBlock
                     x:Name="InputPlaceholder"
                     Text="(vazio — clique direito › Editar)"
@@ -284,7 +268,6 @@
                     IsHitTestVisible="False"
                     Visibility="Collapsed" />
 
-                <!-- image block -->
                 <Border
                     x:Name="ImageBorder"
                     Background="{StaticResource InputBg}"
@@ -298,7 +281,6 @@
                     <Image x:Name="ImageControl" MaxHeight="200" MaxWidth="400" Stretch="Uniform" />
                 </Border>
 
-                <!-- copy feedback -->
                 <TextBlock
                     x:Name="CopiedText"
                     Text="Copiado!"

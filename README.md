@@ -7,9 +7,10 @@ Bloco de notas pessoal para Windows com suporte a Markdown, blocos de código co
 
 ## Features
 
-- **Abas** — crie quantas abas quiser, renomeie e reordene arrastando
-- **Markdown renderizado** — edite em texto e veja renderizado ao sair (negrito, tabelas, listas, tachado, etc.)
-- **Blocos de código** com syntax highlighting e numeração de linhas: CMD/Batch, PowerShell, SQL e VBScript
+- **Abas** — crie quantas abas quiser, renomeie pelo menu de contexto e reordene com `Shift`+arrastar
+- **Markdown renderizado** — edite em texto e veja renderizado ao sair: `**negrito**`, `*itálico*` e `~~tachado~~`
+- **Blocos de código** com syntax highlighting em tempo real e numeração de linhas: CMD/Batch, PowerShell, SQL e VBScript
+- **Blocos de senha** — mesmo bloco de código, exibido como `*` fora do modo de edição
 - **Imagens** — cole da área de transferência (`Ctrl+V` no modo edição) ou importe por arquivo
 - **Labels** — pílulas coloridas sobre cada input para identificar o conteúdo
 - **Separadores** — divisores visuais entre os inputs

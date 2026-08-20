@@ -15,8 +15,6 @@
     <StartupObject>totem.Program</StartupObject>
   </PropertyGroup>
 
-  <!-- App.xaml keeps App as a plain Page compiled resource; Program.Main (not the
-       WPF-generated one) drives startup so we can guard single-instance first. -->
   <ItemGroup>
     <ApplicationDefinition Remove="App.xaml" />
     <Page Include="App.xaml" />
@@ -26,6 +24,7 @@
     <PackageReference Include="WPF-UI" Version="4.3.0" />
     <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="ILRepack" Version="2.0.44" GeneratePathProperty="true" ExcludeAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,4 +35,16 @@
   <ItemGroup>
     <Reference Include="System.Security" />
   </ItemGroup>
+  <Target Name="SingleFile" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <SingleFileDir>$(MSBuildProjectDirectory)\publish</SingleFileDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <MergeInput Include="$(TargetDir)$(TargetFileName)" />
+      <MergeInput Include="$(TargetDir)*.dll" />
+    </ItemGroup>
+    <MakeDir Directories="$(SingleFileDir)" />
+    <Exec Command="&quot;$(PkgILRepack)\tools\ILRepack.exe&quot; /out:&quot;$(SingleFileDir)\$(TargetFileName)&quot; /target:winexe /targetplatform:v4 @(MergeInput->'&quot;%(FullPath)&quot;', ' ')" />
+    <Message Importance="high" Text="Single file: $(SingleFileDir)\$(TargetFileName)" />
+  </Target>
 </Project>

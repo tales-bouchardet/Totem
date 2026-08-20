@@ -14,13 +14,10 @@ namespace totem;
 
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
-    // Window minimum follows the input floor: input's minimum width
-    // (ItemControl.MinInputWidth) + a bit of slack for the window chrome.
     private const double MinWindowChrome = 32 + 20;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
-    // Local auto-saved cache, protected by DPAPI (only this Windows user can read it).
     private static readonly string CachePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "totem", "cache.bin");
@@ -31,8 +28,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private Point _tabDragStart;
     private TabItem? _tabDragSource;
 
-    // Always the last entry in Tabs.Items: a "+" that looks/behaves like the old
-    // standalone button but flows in the same WrapPanel row as the real tabs.
     private TabItem? _addTabItem;
 
     public MainWindow()
@@ -95,8 +90,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         return new TabItem { Header = button, Tag = "AddButton", Focusable = false };
     }
-
-    // ── Tabs ─────────────────────────────────────────────────────────────────
 
     private void AddTab(TotemTab model)
     {
@@ -162,8 +155,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e) => ScheduleSave();
 
-    // ── Tab drag reorder ─────────────────────────────────────────────────────
-
     private void TabItem_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (Keyboard.Modifiers != ModifierKeys.Shift)
@@ -204,11 +195,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         ScheduleSave();
     }
 
-    // ── About popup ──────────────────────────────────────────────────────────
-
     private void AboutButton_Click(object sender, RoutedEventArgs e) => AboutPopup.IsOpen = !AboutPopup.IsOpen;
-
-    // ── Export ───────────────────────────────────────────────────────────────
 
     private async void ExportButton_Click(object sender, RoutedEventArgs e)
     {
@@ -230,8 +217,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             await InfoAsync("Erro ao exportar", ex.Message);
         }
     }
-
-    // ── Import ───────────────────────────────────────────────────────────────
 
     private async void ImportButton_Click(object sender, RoutedEventArgs e)
     {
@@ -276,11 +261,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         ScheduleSave();
     }
 
-    // ── Automatic cache (DPAPI / CurrentUser) ───────────────────────────────
-
     private void ScheduleSave()
     {
-        if (!_loaded) return; // don't persist during the initial load
+        if (!_loaded) return;
         _saveDebounce ??= CreateDebounce();
         _saveDebounce.Stop();
         _saveDebounce.Start();
@@ -306,8 +289,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (Exception ex)
         {
-            // cache is best-effort: never surfaces to the user, but worth a trace
-            // so a silently-broken autosave can be diagnosed after the fact.
             Log.Error("SaveCache", ex);
         }
     }
@@ -320,8 +301,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             var protectedBytes = File.ReadAllBytes(CachePath);
             var bytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
             var doc = JsonSerializer.Deserialize<TotemDocument>(Encoding.UTF8.GetString(bytes));
-            // Ignore a cache from a newer version (app downgrade): recreating it is safer
-            // than reinterpreting a format we don't understand yet.
+
             return doc is not null && doc.Version <= TotemDocument.CurrentVersion ? doc : null;
         }
         catch (Exception ex)
@@ -330,8 +310,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             return null;
         }
     }
-
-    // ── Document <-> UI ─────────────────────────────────────────────────────
 
     private TotemDocument BuildDocument()
     {
@@ -363,8 +341,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (doc.SelectedTab >= 0 && doc.SelectedTab < realCount)
             Tabs.SelectedIndex = doc.SelectedTab;
     }
-
-    // ── Dialogs ─────────────────────────────────────────────────────────────
 
     private async Task<string?> AskNewPasswordAsync()
     {

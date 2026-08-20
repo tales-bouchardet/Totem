@@ -10,27 +10,13 @@ using Org.BouncyCastle.Crypto.Parameters;
 
 namespace totem;
 
-/// <summary>
-/// .ttm file format (opaque binary):
-///   [4]  magic  "TTM1"
-///   [16] salt   (PBKDF2)
-///   [12] nonce  (AES-GCM)
-///   [16] tag    (AES-GCM authentication tag)
-///   [..] ciphertext
-///
-/// The password given on export is the key material itself: an AES-256 key is
-/// derived from it via PBKDF2/SHA-256. Because GCM is authenticated, importing
-/// with the wrong password (or a tampered file) throws and the import is rejected.
-/// .NET Framework has no built-in AES-GCM or SHA-256 PBKDF2, so both come from
-/// BouncyCastle.
-/// </summary>
 public static class TotemCrypto
 {
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("TTM1");
     private const int SaltSize = 16;
     private const int NonceSize = 12;
-    private const int TagSize = 16; // bytes
-    private const int KeySize = 32; // bytes (AES-256)
+    private const int TagSize = 16;
+    private const int KeySize = 32;
     private const int Iterations = 200_000;
 
     public static byte[] Encrypt(string plainText, string password)
@@ -47,8 +33,6 @@ public static class TotemCrypto
             var len = cipher.ProcessBytes(plain, 0, plain.Length, output, 0);
             cipher.DoFinal(output, len);
 
-            // BouncyCastle appends the tag to the end of the output; split it back out
-            // so the file layout matches AES-GCM's usual [ciphertext][tag] convention.
             var cipherText = new byte[plain.Length];
             var tag = new byte[TagSize];
             Array.Copy(output, 0, cipherText, 0, plain.Length);
@@ -64,13 +48,11 @@ public static class TotemCrypto
         }
         finally
         {
-            // Don't let the derived key or the plaintext linger in memory.
             Array.Clear(key, 0, key.Length);
             Array.Clear(plain, 0, plain.Length);
         }
     }
 
-    /// <summary>Throws <see cref="CryptographicException"/> if the password is wrong or the file is invalid.</summary>
     public static string Decrypt(byte[] data, string password)
     {
         var minimum = Magic.Length + SaltSize + NonceSize + TagSize;
@@ -83,7 +65,6 @@ public static class TotemCrypto
         var tag = Slice(data, offset, TagSize); offset += TagSize;
         var cipherLen = data.Length - offset;
 
-        // Re-append the tag so BouncyCastle sees the [ciphertext][tag] layout it expects.
         var cipherAndTag = new byte[cipherLen + TagSize];
         Array.Copy(data, offset, cipherAndTag, 0, cipherLen);
         Array.Copy(tag, 0, cipherAndTag, cipherLen, TagSize);
@@ -102,7 +83,6 @@ public static class TotemCrypto
             }
             catch (InvalidCipherTextException)
             {
-                // wrong password or tampered file
                 throw new CryptographicException("Senha incorreta ou arquivo corrompido.");
             }
         }

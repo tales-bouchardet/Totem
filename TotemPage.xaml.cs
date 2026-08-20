@@ -3,13 +3,9 @@ using System.Windows.Controls;
 
 namespace totem;
 
-/// <summary>
-/// Content of a tab: a scrollable list of <see cref="ItemControl"/>.
-/// Right-clicking an empty area opens the menu to insert a new input.
-/// </summary>
 public partial class TotemPage : UserControl
 {
-    public event Action? Changed; // bubbles up so the window persists (cache)
+    public event Action? Changed;
 
     public TotemPage(TotemTab model)
     {
